@@ -17,8 +17,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
 import { pendingMigrations } from "./migration-plan.mjs";
+import { normalizeDatabaseUrl } from "./database-url.mjs";
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL, { direct: true });
 if (!databaseUrl) {
   console.log(
     "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",
@@ -42,7 +43,18 @@ async function main() {
     return;
   }
 
-  const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
+  let host = "database";
+  try {
+    host = new URL(databaseUrl).host;
+  } catch {
+    /* keep the generic label */
+  }
+  console.log(`[migrate] connecting to ${host}`);
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: { rejectUnauthorized: false },
+  });
   const client = await pool.connect();
   try {
     await client.query(

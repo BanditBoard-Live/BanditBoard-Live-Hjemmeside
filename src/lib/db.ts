@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { normalizeDatabaseUrl } from "../../scripts/database-url.mjs";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -8,7 +9,9 @@ export type DbSource = "neon" | "pglite";
 const rawDatabaseUrl =
   typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
 const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+  rawDatabaseUrl && rawDatabaseUrl.trim()
+    ? normalizeDatabaseUrl(rawDatabaseUrl)
+    : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -93,7 +96,10 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: { rejectUnauthorized: false },
+    });
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
