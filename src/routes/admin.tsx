@@ -1,0 +1,366 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState, type FormEvent } from "react";
+import { SiteShell } from "@/components/site-shell";
+import { Field, inputClass } from "@/components/auth-card";
+import { RedirectToSignIn } from "@/lib/auth/gates";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import {
+  createVenueAccount,
+  deleteVenueAccount,
+  getMe,
+  getSiteSettings,
+  listVenueAccounts,
+  newAccessCode,
+  saveSiteSettings,
+  setVenueActive,
+  updateVenueAccount,
+  type PublicProfile,
+  type PublicSettings,
+  type VenueDraft,
+} from "@/lib/venues";
+
+export const Route = createFileRoute("/admin")({ component: AdminPage });
+
+const blank: VenueDraft = {
+  venueName: "",
+  contactName: "",
+  email: "",
+  phone: "",
+  address: "",
+  postalCode: "",
+  city: "",
+  notes: "",
+  accessCode: "",
+};
+
+function AdminPage() {
+  const { user, isPending } = useCurrentUserState();
+  const [me, setMe] = useState<PublicProfile | null>(null);
+  const [venues, setVenues] = useState<PublicProfile[]>([]);
+  const [draft, setDraft] = useState<VenueDraft>(blank);
+  const [created, setCreated] = useState<{ name: string; email: string; code: string } | null>(null);
+  const [settings, setSettings] = useState<PublicSettings>({
+    facebook: "",
+    instagram: "",
+    youtube: "",
+    contactEmail: "",
+    contactPhone: "",
+  });
+  const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const [pending, setPending] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  async function reload() {
+    const [profile, list, site] = await Promise.all([getMe(), listVenueAccounts(), getSiteSettings()]);
+    setMe(profile);
+    setVenues(list);
+    setSettings(site);
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    reload().catch((err: Error) => setError(err.message || "Admin kunne ikke åbnes."));
+  }, [user]);
+
+  if (isPending || (user && !me && !error)) {
+    return (
+      <SiteShell>
+        <div className="mx-auto max-w-6xl px-4 py-16">
+          <div className="h-12 w-72 animate-pulse rounded-xl bg-surface-2" />
+        </div>
+      </SiteShell>
+    );
+  }
+  if (!user) return <RedirectToSignIn />;
+  if (me && me.role !== "admin") {
+    return (
+      <SiteShell>
+        <div className="mx-auto max-w-xl px-4 py-16 text-center">
+          <h1 className="font-display text-5xl">Kun administrator</h1>
+          <p className="mt-3 text-muted">Den her side er til den, der låner scoreboardet ud. Den første bruger på siden er administrator.</p>
+          <Link to="/konto" className="mt-6 inline-flex min-h-11 items-center text-primary">
+            Tilbage til kontoen
+          </Link>
+        </div>
+      </SiteShell>
+    );
+  }
+
+  function patch<K extends keyof VenueDraft>(key: K, value: string) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function onCreate(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setNote("");
+    setPending(true);
+    try {
+      const result = await createVenueAccount({ data: draft });
+      setCreated({ name: result.profile.venueName, email: result.profile.email, code: result.accessCode });
+      setDraft(blank);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Brugeren kunne ikke oprettes.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function copy(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+      setNote("Koden er kopieret.");
+    } catch {
+      setNote("Markér koden og kopiér den selv.");
+    }
+  }
+
+  return (
+    <SiteShell>
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10">
+        <div>
+          <p className="font-display text-lg tracking-widest text-accent">ADMIN</p>
+          <h1 className="font-display text-5xl sm:text-6xl">Pubber og klubber</h1>
+          <p className="mt-2 max-w-2xl text-muted">
+            Opret for eksempel Sanderum Pubben med mail, kontaktperson, telefon og adresse. De får en adgangskode og logger ind på deres egen tavle.
+          </p>
+        </div>
+
+        <form onSubmit={onCreate} className="grid gap-4 rounded-card border border-line bg-surface p-5">
+          <h2 className="font-display text-3xl">Ny bruger</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Pub, klub eller sted">
+              <input className={inputClass} required value={draft.venueName} onChange={(e) => patch("venueName", e.target.value)} placeholder="Sanderum Pubben" />
+            </Field>
+            <Field label="Kontaktperson">
+              <input className={inputClass} value={draft.contactName} onChange={(e) => patch("contactName", e.target.value)} />
+            </Field>
+            <Field label="E-mail">
+              <input className={inputClass} type="email" required value={draft.email} onChange={(e) => patch("email", e.target.value)} placeholder="kontakt@sanderumpubben.dk" />
+            </Field>
+            <Field label="Telefon">
+              <input className={inputClass} value={draft.phone} onChange={(e) => patch("phone", e.target.value)} />
+            </Field>
+            <Field label="Adresse">
+              <input className={inputClass} value={draft.address} onChange={(e) => patch("address", e.target.value)} />
+            </Field>
+            <div className="grid grid-cols-[7rem_1fr] gap-3">
+              <Field label="Postnr.">
+                <input className={inputClass} value={draft.postalCode} onChange={(e) => patch("postalCode", e.target.value)} />
+              </Field>
+              <Field label="By">
+                <input className={inputClass} value={draft.city} onChange={(e) => patch("city", e.target.value)} />
+              </Field>
+            </div>
+          </div>
+          <Field label="Note">
+            <input className={inputClass} value={draft.notes} onChange={(e) => patch("notes", e.target.value)} placeholder="Udlånt til klubaften, hentes fredag…" />
+          </Field>
+          <Field label="Adgangskode — lad feltet stå tomt, så laves den selv">
+            <input className={inputClass} value={draft.accessCode} onChange={(e) => patch("accessCode", e.target.value)} placeholder="SAND-4821" autoComplete="off" />
+          </Field>
+          {error ? <p className="text-sm text-danger">{error}</p> : null}
+          <button type="submit" disabled={pending} className="min-h-12 rounded-xl bg-primary font-display text-2xl text-primary-fg disabled:opacity-60">
+            {pending ? "Opretter…" : "Opret bruger og kode"}
+          </button>
+        </form>
+
+        {created ? (
+          <section className="rounded-card border border-primary bg-deep p-5">
+            <p className="text-sm text-muted">{created.name} kan logge ind med</p>
+            <p className="mt-1 text-sm">{created.email}</p>
+            <p className="mt-2 font-display text-6xl text-primary">{created.code}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" className="min-h-11 rounded-xl bg-surface-2 px-4" onClick={() => void copy(created.code)}>
+                Kopiér kode
+              </button>
+              <button type="button" className="min-h-11 rounded-xl px-4 text-muted" onClick={() => setCreated(null)}>
+                Skjul
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="grid gap-3">
+          <h2 className="font-display text-3xl">Brugere</h2>
+          {note ? <p className="text-sm text-ok">{note}</p> : null}
+          {venues.map((venue) => (
+            <article key={venue.userId} className="rounded-card border border-line bg-surface p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-display text-3xl">{venue.venueName || venue.accountName}</h3>
+                  <p className="text-sm text-muted">
+                    {venue.email}
+                    {venue.contactName ? ` · ${venue.contactName}` : ""}
+                    {venue.phone ? ` · ${venue.phone}` : ""}
+                  </p>
+                  <p className="text-sm text-muted">
+                    {[venue.address, venue.postalCode, venue.city].filter(Boolean).join(", ") || "Ingen adresse endnu"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs tracking-wide text-muted">{venue.role === "admin" ? "ADMIN" : venue.active ? "ÅBEN" : "LUKKET"}</p>
+                  <p className="font-display text-3xl text-primary">{venue.accessCode || "—"}</p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {venue.accessCode ? (
+                  <button type="button" className="min-h-11 rounded-xl border border-line px-3 text-sm" onClick={() => void copy(venue.accessCode)}>
+                    Kopiér kode
+                  </button>
+                ) : null}
+                <button type="button" className="min-h-11 rounded-xl border border-line px-3 text-sm" onClick={() => setOpenId(openId === venue.userId ? null : venue.userId)}>
+                  {openId === venue.userId ? "Luk" : "Ret"}
+                </button>
+                {venue.role !== "admin" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-xl border border-line px-3 text-sm"
+                      onClick={() => {
+                        void newAccessCode({ data: { userId: venue.userId } })
+                          .then(async (next) => {
+                            setNote(`Ny kode til ${next.venueName}: ${next.accessCode}`);
+                            setCreated({ name: next.venueName, email: next.email, code: next.accessCode });
+                            await reload();
+                          })
+                          .catch((err: Error) => setError(err.message));
+                      }}
+                    >
+                      Ny kode
+                    </button>
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-xl border border-line px-3 text-sm"
+                      onClick={() => {
+                        void setVenueActive({ data: { userId: venue.userId, active: !venue.active } })
+                          .then(() => reload())
+                          .catch((err: Error) => setError(err.message));
+                      }}
+                    >
+                      {venue.active ? "Luk adgang" : "Åbn adgang"}
+                    </button>
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-xl px-3 text-sm text-danger"
+                      onClick={() => {
+                        if (!window.confirm(`Slet ${venue.venueName || venue.email}? Deres tavle slettes også.`)) return;
+                        void deleteVenueAccount({ data: { userId: venue.userId } })
+                          .then(() => reload())
+                          .catch((err: Error) => setError(err.message));
+                      }}
+                    >
+                      Slet
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              {openId === venue.userId ? <VenueEditor venue={venue} onSaved={() => void reload().then(() => setNote("Oplysningerne er gemt."))} /> : null}
+            </article>
+          ))}
+        </section>
+
+        <form
+          className="grid gap-4 rounded-card border border-line bg-surface p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError("");
+            void saveSiteSettings({ data: settings })
+              .then((next) => {
+                setSettings(next);
+                setNote("Bunden af siden er opdateret.");
+              })
+              .catch((err: Error) => setError(err.message));
+          }}
+        >
+          <h2 className="font-display text-3xl">Bund og sociale medier</h2>
+          <p className="text-sm text-muted">Links skal starte med https://. Ikonerne vises altid nederst — de bliver klikbare, når der står et link.</p>
+          <Field label="Facebook">
+            <input className={inputClass} value={settings.facebook} onChange={(e) => setSettings({ ...settings, facebook: e.target.value })} placeholder="https://facebook.com/…" />
+          </Field>
+          <Field label="Instagram">
+            <input className={inputClass} value={settings.instagram} onChange={(e) => setSettings({ ...settings, instagram: e.target.value })} placeholder="https://instagram.com/…" />
+          </Field>
+          <Field label="YouTube">
+            <input className={inputClass} value={settings.youtube} onChange={(e) => setSettings({ ...settings, youtube: e.target.value })} placeholder="https://youtube.com/…" />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Telefon i bunden">
+              <input className={inputClass} value={settings.contactPhone} onChange={(e) => setSettings({ ...settings, contactPhone: e.target.value })} />
+            </Field>
+            <Field label="Mail i bunden">
+              <input className={inputClass} value={settings.contactEmail} onChange={(e) => setSettings({ ...settings, contactEmail: e.target.value })} />
+            </Field>
+          </div>
+          <button type="submit" className="min-h-12 rounded-xl bg-surface-2 font-display text-2xl">
+            Gem bunden
+          </button>
+        </form>
+      </div>
+    </SiteShell>
+  );
+}
+
+function VenueEditor({ venue, onSaved }: { venue: PublicProfile; onSaved: () => void }) {
+  const [form, setForm] = useState(venue);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
+
+  return (
+    <form
+      className="mt-4 grid gap-3 border-t border-line pt-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setBusy(true);
+        setLocalError("");
+        void updateVenueAccount({
+          data: {
+            userId: venue.userId,
+            venueName: form.venueName,
+            contactName: form.contactName,
+            email: form.email,
+            phone: form.phone,
+            address: form.address,
+            postalCode: form.postalCode,
+            city: form.city,
+            notes: form.notes,
+            accessCode: "",
+          },
+        })
+          .then(() => onSaved())
+          .catch((err: Error) => setLocalError(err.message))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Navn">
+          <input className={inputClass} value={form.venueName} onChange={(e) => setForm({ ...form, venueName: e.target.value })} />
+        </Field>
+        <Field label="Kontaktperson">
+          <input className={inputClass} value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} />
+        </Field>
+        <Field label="Telefon">
+          <input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+        </Field>
+        <Field label="Adresse">
+          <input className={inputClass} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+        </Field>
+        <Field label="Postnr.">
+          <input className={inputClass} value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} />
+        </Field>
+        <Field label="By">
+          <input className={inputClass} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="Note">
+        <input className={inputClass} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+      </Field>
+      {localError ? <p className="text-sm text-danger">{localError}</p> : null}
+      <button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-primary px-4 font-display text-xl text-primary-fg disabled:opacity-60">
+        {busy ? "Gemmer…" : "Gem ændringer"}
+      </button>
+    </form>
+  );
+}
