@@ -47,7 +47,12 @@ function SignupPage() {
     });
     if (result.error) {
       setPending(false);
-      setError(result.error.message || "Brugeren kunne ikke oprettes. Prøv en anden e-mail.");
+      const message = result.error.message?.trim() ?? "";
+      setError(
+        message && !/internal server error|failed to fetch/i.test(message)
+          ? message
+          : "Kontoen kunne ikke gemmes. Databasen er ikke sat op endnu.",
+      );
       return;
     }
     await rememberSession(result.data?.token);
