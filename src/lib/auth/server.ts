@@ -46,7 +46,7 @@ import {
   PREVIEW_CLIENT_ID,
   PREVIEW_CLIENT_SECRET,
 } from "./preview";
-import { normalizeDatabaseUrl } from "../../scripts/database-url.mjs";
+import { normalizeDatabaseUrl } from "../../../scripts/database-url.mjs";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
 void ensureDbReady();
