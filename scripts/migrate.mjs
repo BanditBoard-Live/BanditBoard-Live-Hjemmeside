@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
 import { pendingMigrations } from "./migration-plan.mjs";
-import { normalizeDatabaseUrl } from "./database-url.mjs";
+import { normalizeDatabaseUrl, databaseHost } from "./database-url.mjs";
 
 const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL, { direct: true });
 if (!databaseUrl) {
@@ -25,6 +25,14 @@ if (!databaseUrl) {
     "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",
   );
   process.exit(0);
+}
+
+const host = databaseHost(databaseUrl);
+if (!host) {
+  console.error(
+    "[migrate] DATABASE_URL is not a valid Neon connection string. In Neon, open Connect and copy the string that starts with postgresql://. Paste only that string — no quotes and no DATABASE_URL= in front.",
+  );
+  process.exit(1);
 }
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
@@ -43,12 +51,6 @@ async function main() {
     return;
   }
 
-  let host = "database";
-  try {
-    host = new URL(databaseUrl).host;
-  } catch {
-    /* keep the generic label */
-  }
   console.log(`[migrate] connecting to ${host}`);
   const pool = new pg.Pool({
     connectionString: databaseUrl,
