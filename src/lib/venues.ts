@@ -5,7 +5,7 @@ export type PublicProfile = {
   userId: string;
   email: string;
   accountName: string;
-  role: "admin" | "klub";
+  role: "admin" | "udlejning" | "klub";
   venueName: string;
   contactName: string;
   phone: string;
@@ -140,9 +140,10 @@ export const newAccessCode = createServerFn({ method: "POST" })
 
 export const setUserRole = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { userId: string; role: "admin" | "klub" }) => {
+  .validator((input: { userId: string; role: "admin" | "udlejning" | "klub" }) => {
     const userId = clip(input?.userId, 80);
-    const role = input?.role === "admin" ? "admin" : input?.role === "klub" ? "klub" : "";
+    const role =
+      input?.role === "admin" || input?.role === "udlejning" || input?.role === "klub" ? input.role : "";
     if (!userId || !role) throw new Error("Brugeren eller rollen mangler.");
     return { userId, role };
   })

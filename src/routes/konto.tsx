@@ -100,10 +100,10 @@ function AccountPage() {
             Adgangen er lukket. Kontakt administratoren.
           </p>
         ) : null}
-        {profile?.role === "admin" ? (
+        {profile?.role === "admin" || profile?.role === "udlejning" ? (
           <Link to="/admin" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 font-semibold text-primary">
             <Shield className="size-4" aria-hidden="true" />
-            Admin — opret pubber og koder
+            {profile.role === "admin" ? "Admin — brugere og roller" : "Udlejning — pubber og koder"}
           </Link>
         ) : null}
 

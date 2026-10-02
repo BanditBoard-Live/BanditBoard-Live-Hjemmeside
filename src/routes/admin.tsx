@@ -75,12 +75,12 @@ function AdminPage() {
     );
   }
   if (!user) return <RedirectToSignIn />;
-  if (me && me.role !== "admin") {
+  if (me && me.role === "klub") {
     return (
       <SiteShell>
         <div className="mx-auto max-w-xl px-4 py-16 text-center">
           <h1 className="font-display text-5xl">Kun administrator</h1>
-          <p className="mt-3 text-muted">Kun en administrator kan bruge den her side. Nye brugere får ikke admin, før du giver dem det.</p>
+          <p className="mt-3 text-muted">Kun administrator og udlejning kan bruge den her side.</p>
           <Link to="/konto" className="mt-6 inline-flex min-h-11 items-center text-primary">
             Tilbage til kontoen
           </Link>
@@ -126,8 +126,17 @@ function AdminPage() {
           <p className="font-display text-lg tracking-widest text-accent">ADMIN</p>
           <h1 className="font-display text-5xl sm:text-6xl">Pubber og klubber</h1>
           <p className="mt-2 max-w-2xl text-muted">
-            Nye konti er almindelige brugere. Søg dem frem og giv admin, eller opret en pub med mail, kontaktperson og en adgangskode.
+            {me?.role === "admin"
+              ? "Søg en bruger frem og vælg rollen. Udlejning kan oprette pubber og koder, men ikke ændre roller."
+              : "Du kan oprette pubber og koder. Kun administratoren kan ændre roller."}
           </p>
+          {me?.role === "admin" ? (
+            <ul className="mt-4 grid gap-2 text-sm text-muted sm:grid-cols-3">
+              <li className="rounded-xl border border-line bg-surface px-3 py-2"><span className="text-primary">Administrator</span> — brugere, roller og siden.</li>
+              <li className="rounded-xl border border-line bg-surface px-3 py-2"><span className="text-primary">Udlejning</span> — pubber, koder og udlån.</li>
+              <li className="rounded-xl border border-line bg-surface px-3 py-2"><span className="text-primary">Klub</span> — kun egen tavle.</li>
+            </ul>
+          ) : null}
         </div>
 
         <form onSubmit={onCreate} className="grid gap-4 rounded-card border border-line bg-surface p-5">
@@ -223,36 +232,38 @@ function AdminPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs tracking-wide text-muted">{venue.role === "admin" ? "ADMIN" : venue.active ? "ÅBEN" : "LUKKET"}</p>
+                  <p className="text-xs tracking-wide text-muted">
+                    {venue.role === "admin" ? "ADMINISTRATOR" : venue.role === "udlejning" ? "UDLEJNING" : venue.active ? "KLUB" : "LUKKET"}
+                  </p>
                   <p className="font-display text-3xl text-primary">{venue.accessCode || "—"}</p>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {venue.userId === me?.userId ? (
+                {me?.role === "admin" && venue.userId !== me.userId ? (
+                  <label className="grid gap-1 text-xs text-muted">
+                    <span>Rolle</span>
+                    <select
+                      className={inputClass}
+                      value={venue.role}
+                      onChange={(event) => {
+                        const role = event.target.value as "admin" | "udlejning" | "klub";
+                        const label = venue.venueName || venue.email;
+                        void setUserRole({ data: { userId: venue.userId, role } })
+                          .then(async () => {
+                            setNote(`${label} er nu ${role === "admin" ? "administrator" : role === "udlejning" ? "udlejning" : "klub"}.`);
+                            await reload();
+                          })
+                          .catch((err: Error) => setError(err.message));
+                      }}
+                    >
+                      <option value="klub">Klub — kun egen tavle</option>
+                      <option value="udlejning">Udlejning — pubber og koder</option>
+                      <option value="admin">Administrator</option>
+                    </select>
+                  </label>
+                ) : venue.userId === me?.userId ? (
                   <span className="inline-flex min-h-11 items-center px-3 text-sm text-muted">Det er dig</span>
-                ) : (
-                  <button
-                    type="button"
-                    className="min-h-11 rounded-xl border border-primary px-3 text-sm text-primary"
-                    onClick={() => {
-                      const next = venue.role === "admin" ? "klub" : "admin";
-                      const label = venue.venueName || venue.email;
-                      const question =
-                        next === "admin"
-                          ? `Giv ${label} admin-adgang?`
-                          : `Fjern admin fra ${label}?`;
-                      if (!window.confirm(question)) return;
-                      void setUserRole({ data: { userId: venue.userId, role: next } })
-                        .then(async () => {
-                          setNote(next === "admin" ? `${label} er nu administrator.` : `Admin er fjernet fra ${label}.`);
-                          await reload();
-                        })
-                        .catch((err: Error) => setError(err.message));
-                    }}
-                  >
-                    {venue.role === "admin" ? "Fjern admin" : "Giv admin"}
-                  </button>
-                )}
+                ) : null}
                 {venue.accessCode ? (
                   <button type="button" className="min-h-11 rounded-xl border border-line px-3 text-sm" onClick={() => void copy(venue.accessCode)}>
                     Kopiér kode
@@ -289,6 +300,7 @@ function AdminPage() {
                     >
                       {venue.active ? "Luk adgang" : "Åbn adgang"}
                     </button>
+                    {me?.role === "admin" ? (
                     <button
                       type="button"
                       className="min-h-11 rounded-xl px-3 text-sm text-danger"
@@ -301,6 +313,7 @@ function AdminPage() {
                     >
                       Slet
                     </button>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -318,6 +331,7 @@ function AdminPage() {
           ) : null}
         </section>
 
+        {me?.role === "admin" ? (
         <form
           className="grid gap-4 rounded-card border border-line bg-surface p-5"
           onSubmit={(event) => {
@@ -354,6 +368,7 @@ function AdminPage() {
             Gem bunden
           </button>
         </form>
+        ) : null}
       </div>
     </SiteShell>
   );

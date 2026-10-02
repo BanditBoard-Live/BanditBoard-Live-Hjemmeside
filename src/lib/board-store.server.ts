@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { getSql } from "@/lib/db";
 
+export type UserRole = "admin" | "udlejning" | "klub";
+
 export type Profile = {
   userId: string;
   email: string;
   accountName: string;
-  role: "admin" | "klub";
+  role: UserRole;
   venueName: string;
   contactName: string;
   phone: string;
@@ -55,7 +57,7 @@ function mapProfile(row: ProfileRow): Profile {
     userId: row.user_id,
     email: row.email ?? "",
     accountName: row.account_name ?? "",
-    role: row.role === "admin" ? "admin" : "klub",
+    role: row.role === "admin" || row.role === "udlejning" ? row.role : "klub",
     venueName: row.venue_name,
     contactName: row.contact_name,
     phone: row.phone,
@@ -142,6 +144,14 @@ async function requireAdmin(userId: string): Promise<Profile> {
   return profile;
 }
 
+async function requireStaff(userId: string): Promise<Profile> {
+  const profile = await ensureProfile(userId);
+  if (profile.role !== "admin" && profile.role !== "udlejning") {
+    throw new Error("Kun administratoren eller udlejning kan gøre det.");
+  }
+  return profile;
+}
+
 export function makeAccessCode(venueName: string): string {
   const letters = venueName
     .normalize("NFD")
@@ -171,7 +181,7 @@ export async function createVenueAccount(
     accessCode: string;
   },
 ): Promise<{ profile: Profile; accessCode: string }> {
-  await requireAdmin(adminId);
+  await requireStaff(adminId);
   const code = input.accessCode || makeAccessCode(input.venueName);
   if (!isValidCode(code)) throw new Error("Adgangskoden skal være 8–40 tegn: bogstaver, tal og bindestreg.");
   const sql = await getSql();
@@ -203,10 +213,10 @@ export async function createVenueAccount(
 export async function setUserRole(
   adminId: string,
   userId: string,
-  role: "admin" | "klub",
+  role: UserRole,
 ): Promise<Profile> {
   const admin = await requireAdmin(adminId);
-  if (role !== "admin" && role !== "klub") throw new Error("Ukendt rolle.");
+  if (role !== "admin" && role !== "udlejning" && role !== "klub") throw new Error("Ukendt rolle.");
   if (userId === admin.userId && role !== "admin") {
     throw new Error("Du kan ikke fjerne din egen admin-adgang.");
   }
@@ -225,7 +235,7 @@ export async function setUserRole(
 }
 
 export async function listVenues(adminId: string): Promise<Profile[]> {
-  await requireAdmin(adminId);
+  await requireStaff(adminId);
   const sql = await getSql();
   const rows = await sql.query<ProfileRow>(`${PROFILE_SELECT} order by p.created_at desc`);
   return rows.map(mapProfile);
@@ -244,7 +254,12 @@ export async function updateVenue(
     notes: string;
   },
 ): Promise<Profile> {
-  await requireAdmin(adminId);
+  const actor = await requireStaff(adminId);
+  const current = await readProfile(input.userId);
+  if (!current) throw new Error("Brugeren blev ikke fundet.");
+  if (current.role === "admin" && actor.role !== "admin") {
+    throw new Error("Kun administratoren kan rette en administrator.");
+  }
   const sql = await getSql();
   await sql`
     update profiles set
@@ -266,8 +281,13 @@ export async function updateVenue(
 }
 
 export async function setVenueActive(adminId: string, userId: string, active: boolean): Promise<Profile> {
-  const admin = await requireAdmin(adminId);
-  if (userId === admin.userId && !active) throw new Error("Du kan ikke lukke din egen adgang.");
+  const actor = await requireStaff(adminId);
+  if (userId === actor.userId && !active) throw new Error("Du kan ikke lukke din egen adgang.");
+  const current = await readProfile(userId);
+  if (!current) throw new Error("Brugeren blev ikke fundet.");
+  if (current.role === "admin" && actor.role !== "admin") {
+    throw new Error("Kun administratoren kan lukke en administrator.");
+  }
   const sql = await getSql();
   await sql`update profiles set active = ${active} where user_id = ${userId}`;
   const profile = await readProfile(userId);
@@ -276,9 +296,12 @@ export async function setVenueActive(adminId: string, userId: string, active: bo
 }
 
 export async function regenerateAccessCode(adminId: string, userId: string, custom?: string): Promise<Profile> {
-  await requireAdmin(adminId);
+  const actor = await requireStaff(adminId);
   const current = await readProfile(userId);
   if (!current) throw new Error("Brugeren blev ikke fundet.");
+  if (current.role === "admin" && actor.role !== "admin") {
+    throw new Error("Kun administratoren kan skifte en administrators kode.");
+  }
   const code = (custom || "").trim() || makeAccessCode(current.venueName || current.accountName);
   if (!isValidCode(code)) throw new Error("Adgangskoden skal være 8–40 tegn: bogstaver, tal og bindestreg.");
   const hash = await hashPassword(code);

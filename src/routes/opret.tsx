@@ -80,7 +80,7 @@ function SignupPage() {
     <SiteShell>
       <AuthCard
         title="Opret bruger"
-        lede="Du opretter en almindelig konto. Den giver ikke adgang til admin."
+        lede="Den første konto på siden bliver administrator. Alle andre får en almindelig konto, indtil en administrator giver dem en rolle."
         footer={
           <>
             Har du allerede en kode? <SwitchLink to="/login">Log ind</SwitchLink>
