@@ -8,7 +8,7 @@ function unavailable() {
   return Response.json(
     {
       message:
-        "Databasen er ikke sat op. Tilføj DATABASE_URL i Vercel og udgiv igen.",
+        "DATABASE_URL mangler på den live side. I Vercel skal variablen hedde DATABASE_URL, gælde for Production og starte med postgresql://. Gem, og tryk Redeploy på den nyeste udgivelse.",
     },
     { status: 503 },
   );
