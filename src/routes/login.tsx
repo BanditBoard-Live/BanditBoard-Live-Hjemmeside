@@ -32,7 +32,12 @@ function LoginPage() {
     });
     if (result.error) {
       setPending(false);
-      setError("Mail eller adgangskode passer ikke.");
+      const message = result.error.message ?? "";
+      setError(
+        result.error.status === 503 || /database_url|databasen/i.test(message)
+          ? "Login virker ikke endnu. Databasen er ikke koblet på den live side."
+          : "Mail eller adgangskode passer ikke.",
+      );
       return;
     }
     await rememberSession(result.data?.token);

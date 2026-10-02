@@ -106,7 +106,7 @@ const LOCAL_DEV_ORIGINS: string[] = [
 ];
 // The GitHub → Vercel site is not a Grok preview host. Without these, email
 // sign-up/sign-in from *.vercel.app fails with "Invalid origin".
-const DEPLOY_HOSTS = ["*.vercel.app"];
+const DEPLOY_HOSTS = ["*.vercel.app", "banditboardlive.com", "www.banditboardlive.com"];
 
 function deployOrigins(): string[] {
   const fromEnv = [
@@ -119,7 +119,12 @@ function deployOrigins(): string[] {
       ? value.replace(/\/+$/, "")
       : `https://${value}`,
   );
-  return [...asOrigins, "https://*.vercel.app"];
+  return [
+    ...asOrigins,
+    "https://*.vercel.app",
+    "https://banditboardlive.com",
+    "https://www.banditboardlive.com",
+  ];
 }
 
 const baseURL = explicitBaseURL ?? {
@@ -233,7 +238,9 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  ...(emailAndPasswordEnabled
+    ? { emailAndPassword: { enabled: true, minPasswordLength: 8, autoSignIn: true } }
+    : {}),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
