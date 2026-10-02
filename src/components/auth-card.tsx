@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { GROK_PROVIDERS, signIn } from "@/lib/auth/client";
 
 export function AuthCard({
   title,
@@ -22,19 +21,6 @@ export function AuthCard({
       </div>
       <div className="rounded-card border border-line bg-surface p-5">{children}</div>
       <div className="text-center text-sm text-muted">{footer}</div>
-      <div className="grid gap-2">
-        <p className="text-center text-xs tracking-wide text-muted">ELLER</p>
-        {GROK_PROVIDERS.map((provider) => (
-          <button
-            key={provider.providerId}
-            type="button"
-            onClick={() => void signIn(provider.providerId, { callbackURL: "/konto" })}
-            className="min-h-11 rounded-xl border border-line bg-surface-2 px-4 text-sm font-semibold"
-          >
-            Fortsæt med {provider.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
