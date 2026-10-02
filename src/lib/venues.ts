@@ -138,6 +138,19 @@ export const newAccessCode = createServerFn({ method: "POST" })
     return regenerateAccessCode(context.userId, data.userId, data.accessCode);
   });
 
+export const setUserRole = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { userId: string; role: "admin" | "klub" }) => {
+    const userId = clip(input?.userId, 80);
+    const role = input?.role === "admin" ? "admin" : input?.role === "klub" ? "klub" : "";
+    if (!userId || !role) throw new Error("Brugeren eller rollen mangler.");
+    return { userId, role };
+  })
+  .handler(async ({ context, data }) => {
+    const { setUserRole: setRole } = await import("./board-store.server");
+    return setRole(context.userId, data.userId, data.role);
+  });
+
 export const deleteVenueAccount = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { userId: string }) => {

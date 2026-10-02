@@ -80,7 +80,7 @@ function SignupPage() {
     <SiteShell>
       <AuthCard
         title="Opret bruger"
-        lede="Den første bruger bliver administrator og kan oprette pubber med deres egen kode."
+        lede="Du opretter en almindelig konto. Den giver ikke adgang til admin."
         footer={
           <>
             Har du allerede en kode? <SwitchLink to="/login">Log ind</SwitchLink>

@@ -12,6 +12,7 @@ import {
   listVenueAccounts,
   newAccessCode,
   saveSiteSettings,
+  setUserRole,
   setVenueActive,
   updateVenueAccount,
   type PublicProfile,
@@ -50,6 +51,7 @@ function AdminPage() {
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   async function reload() {
     const [profile, list, site] = await Promise.all([getMe(), listVenueAccounts(), getSiteSettings()]);
@@ -78,7 +80,7 @@ function AdminPage() {
       <SiteShell>
         <div className="mx-auto max-w-xl px-4 py-16 text-center">
           <h1 className="font-display text-5xl">Kun administrator</h1>
-          <p className="mt-3 text-muted">Den her side er til den, der låner scoreboardet ud. Den første bruger på siden er administrator.</p>
+          <p className="mt-3 text-muted">Kun en administrator kan bruge den her side. Nye brugere får ikke admin, før du giver dem det.</p>
           <Link to="/konto" className="mt-6 inline-flex min-h-11 items-center text-primary">
             Tilbage til kontoen
           </Link>
@@ -124,7 +126,7 @@ function AdminPage() {
           <p className="font-display text-lg tracking-widest text-accent">ADMIN</p>
           <h1 className="font-display text-5xl sm:text-6xl">Pubber og klubber</h1>
           <p className="mt-2 max-w-2xl text-muted">
-            Opret for eksempel Sanderum Pubben med mail, kontaktperson, telefon og adresse. De får en adgangskode og logger ind på deres egen tavle.
+            Nye konti er almindelige brugere. Søg dem frem og giv admin, eller opret en pub med mail, kontaktperson og en adgangskode.
           </p>
         </div>
 
@@ -184,9 +186,29 @@ function AdminPage() {
         ) : null}
 
         <section className="grid gap-3">
-          <h2 className="font-display text-3xl">Brugere</h2>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h2 className="font-display text-3xl">Brugere</h2>
+            <label className="grid min-w-64 flex-1 gap-1 text-sm">
+              <span className="text-muted">Søg</span>
+              <input
+                className={inputClass}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Navn eller e-mail, f.eks. bror"
+              />
+            </label>
+          </div>
           {note ? <p className="text-sm text-ok">{note}</p> : null}
-          {venues.map((venue) => (
+          {venues
+            .filter((venue) => {
+              const q = query.trim().toLowerCase();
+              if (!q) return true;
+              return [venue.venueName, venue.accountName, venue.email, venue.contactName, venue.phone]
+                .join(" ")
+                .toLowerCase()
+                .includes(q);
+            })
+            .map((venue) => (
             <article key={venue.userId} className="rounded-card border border-line bg-surface p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -206,6 +228,31 @@ function AdminPage() {
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
+                {venue.userId === me?.userId ? (
+                  <span className="inline-flex min-h-11 items-center px-3 text-sm text-muted">Det er dig</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-xl border border-primary px-3 text-sm text-primary"
+                    onClick={() => {
+                      const next = venue.role === "admin" ? "klub" : "admin";
+                      const label = venue.venueName || venue.email;
+                      const question =
+                        next === "admin"
+                          ? `Giv ${label} admin-adgang?`
+                          : `Fjern admin fra ${label}?`;
+                      if (!window.confirm(question)) return;
+                      void setUserRole({ data: { userId: venue.userId, role: next } })
+                        .then(async () => {
+                          setNote(next === "admin" ? `${label} er nu administrator.` : `Admin er fjernet fra ${label}.`);
+                          await reload();
+                        })
+                        .catch((err: Error) => setError(err.message));
+                    }}
+                  >
+                    {venue.role === "admin" ? "Fjern admin" : "Giv admin"}
+                  </button>
+                )}
                 {venue.accessCode ? (
                   <button type="button" className="min-h-11 rounded-xl border border-line px-3 text-sm" onClick={() => void copy(venue.accessCode)}>
                     Kopiér kode
@@ -260,6 +307,15 @@ function AdminPage() {
               {openId === venue.userId ? <VenueEditor venue={venue} onSaved={() => void reload().then(() => setNote("Oplysningerne er gemt."))} /> : null}
             </article>
           ))}
+          {query.trim() &&
+          !venues.some((venue) =>
+            [venue.venueName, venue.accountName, venue.email, venue.contactName, venue.phone]
+              .join(" ")
+              .toLowerCase()
+              .includes(query.trim().toLowerCase()),
+          ) ? (
+            <p className="text-sm text-muted">Ingen brugere matcher søgningen.</p>
+          ) : null}
         </section>
 
         <form

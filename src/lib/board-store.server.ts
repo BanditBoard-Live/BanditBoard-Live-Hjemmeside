@@ -93,6 +93,8 @@ export async function ensureProfile(userId: string): Promise<Profile> {
   const user = users[0];
   if (!user) throw new Error("Brugeren blev ikke fundet.");
   const admins = await sql<{ n: number }>`select count(*) as n from profiles where role = 'admin'`;
+  // Only the very first account becomes admin. Everyone who signs up later
+  // stays a normal user until an admin grants access.
   const role = Number(admins[0]?.n ?? 0) === 0 ? "admin" : "klub";
   await sql`
     insert into profiles (user_id, role, venue_name, contact_name)
@@ -196,6 +198,30 @@ export async function createVenueAccount(
   const profile = await readProfile(userId);
   if (!profile) throw new Error("Profilen kunne ikke gemmes.");
   return { profile, accessCode: code };
+}
+
+export async function setUserRole(
+  adminId: string,
+  userId: string,
+  role: "admin" | "klub",
+): Promise<Profile> {
+  const admin = await requireAdmin(adminId);
+  if (role !== "admin" && role !== "klub") throw new Error("Ukendt rolle.");
+  if (userId === admin.userId && role !== "admin") {
+    throw new Error("Du kan ikke fjerne din egen admin-adgang.");
+  }
+  const target = await readProfile(userId);
+  if (!target) throw new Error("Brugeren blev ikke fundet.");
+  if (role !== "admin" && target.role === "admin") {
+    const sql = await getSql();
+    const admins = await sql<{ n: number }>`select count(*) as n from profiles where role = 'admin'`;
+    if (Number(admins[0]?.n ?? 0) <= 1) throw new Error("Der skal være mindst én administrator.");
+  }
+  const sql = await getSql();
+  await sql`update profiles set role = ${role} where user_id = ${userId}`;
+  const profile = await readProfile(userId);
+  if (!profile) throw new Error("Brugeren blev ikke fundet.");
+  return profile;
 }
 
 export async function listVenues(adminId: string): Promise<Profile[]> {

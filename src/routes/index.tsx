@@ -97,8 +97,8 @@ function Home() {
             <p className="font-display text-lg tracking-widest text-accent">UDLÅN</p>
             <h2 className="mt-2 font-display text-4xl sm:text-5xl">Lån tavlen ud med en kode</h2>
             <ol className="mt-6 space-y-4 text-sm text-muted">
-              <li><span className="mr-2 font-display text-2xl text-primary">01</span>Den første bruger bliver administrator.</li>
-              <li><span className="mr-2 font-display text-2xl text-primary">02</span>I admin opretter du pubben: mail, kontaktperson, telefon, adresse og hvad der ellers hører til.</li>
+              <li><span className="mr-2 font-display text-2xl text-primary">01</span>Nye brugere får en almindelig konto — ikke admin.</li>
+              <li><span className="mr-2 font-display text-2xl text-primary">02</span>I admin søger du dem frem og kan give admin, eller oprette en pub med en kode.</li>
               <li><span className="mr-2 font-display text-2xl text-primary">03</span>De får en adgangskode, logger ind og bruger kun deres egen tavle.</li>
             </ol>
           </div>
