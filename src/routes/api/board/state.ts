@@ -14,13 +14,23 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function denied(error: unknown) {
+  const message = error instanceof Error ? error.message : "Kunne ikke gemme.";
+  const status = /rettigheder|lukket/i.test(message) ? 403 : 400;
+  return json({ error: message }, status);
+}
+
 export const Route = createFileRoute("/api/board/state")({
   server: {
     handlers: {
       GET: async ({ request }) => {
         const user = await getSessionUser(bearer(request));
         if (!user) return json({ error: "Unauthorized" }, 401);
-        return json(await readBoardState(user.id));
+        try {
+          return json(await readBoardState(user.id));
+        } catch (error) {
+          return denied(error);
+        }
       },
       PUT: async ({ request }) => {
         const user = await getSessionUser(bearer(request));
@@ -36,8 +46,7 @@ export const Route = createFileRoute("/api/board/state")({
         try {
           return json(await writeBoardState(user.id, state));
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Kunne ikke gemme.";
-          return json({ error: message }, message.includes("lukket") ? 403 : 400);
+          return denied(error);
         }
       },
     },

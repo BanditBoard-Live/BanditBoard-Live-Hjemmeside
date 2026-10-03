@@ -17,7 +17,7 @@ import { Field, inputClass } from "@/components/auth-card";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getMe, saveMyProfile, deleteMyAccount, type PublicProfile } from "@/lib/venues";
-import { ROLE_LABEL, canOpenAdmin, canUseScoreboard } from "@/lib/roles";
+import { ROLE_LABEL, canOpenAdmin, canOpenBoard, canRunLiveBoard, hasPermission } from "@/lib/roles";
 import { signOut } from "@/lib/auth/client";
 
 export const Route = createFileRoute("/konto")({ component: AccountPage });
@@ -112,7 +112,7 @@ function AccountPage() {
           </Link>
         ) : null}
 
-        {profile && !canUseScoreboard(profile.role) ? (
+        {profile && !canOpenBoard(profile.role) ? (
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Turneringsplan", "Se programmet for aftenen.", "/turnering"],
@@ -128,7 +128,17 @@ function AccountPage() {
           </div>
         ) : (
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {tools.map(({ href, icon: Icon, title, text }) => (
+          {tools.filter((tool) => {
+            if (!profile) return false;
+            if (tool.href.includes("#remote")) return hasPermission(profile.role, "USE_REMOTE");
+            if (tool.href.includes("#overlay") || tool.href.includes("#tv") || tool.href.includes("#turnering") || tool.href.includes("#sponsor")) {
+              return canRunLiveBoard(profile.role);
+            }
+            if (tool.href.includes("#players") || tool.href.includes("#tour") || tool.href.includes("#matrix") || tool.href.includes("#settings")) {
+              return hasPermission(profile.role, "EDIT_TOURNAMENT") || hasPermission(profile.role, "IMPORT_PLAYERS") || canRunLiveBoard(profile.role);
+            }
+            return canOpenBoard(profile.role);
+          }).map(({ href, icon: Icon, title, text }) => (
             <a key={href + title} href={href} className="rounded-card border border-line bg-surface p-4 transition hover:border-primary">
               <Icon className="mb-2 size-5 text-primary" aria-hidden="true" />
               <h2 className="font-display text-2xl">{title}</h2>

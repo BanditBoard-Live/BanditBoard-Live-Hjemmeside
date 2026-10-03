@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { USER_ROLES, type UserRole } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, type UserRole } from "@/lib/roles";
 
 export type PublicProfile = {
   userId: string;
@@ -139,6 +139,19 @@ export const newAccessCode = createServerFn({ method: "POST" })
     return regenerateAccessCode(context.userId, data.userId, data.accessCode);
   });
 
+export const listAuditLog = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { ensureProfile } = await import("./board-store.server");
+    const { hasPermission } = await import("./roles");
+    const { listAudit } = await import("./audit.server");
+    const profile = await ensureProfile(context.userId);
+    if (!hasPermission(profile.role, "MANAGE_USERS") && !hasPermission(profile.role, "MANAGE_ROLES")) {
+      throw new Error("Kun en administrator kan se loggen.");
+    }
+    return listAudit(100);
+  });
+
 export const deleteMyAccount = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { password: string }) => {
@@ -155,7 +168,7 @@ export const setUserRole = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { userId: string; role: UserRole }) => {
     const userId = clip(input?.userId, 80);
-    const role = (USER_ROLES as readonly string[]).includes(input?.role) ? input.role : "";
+    const role = (ASSIGNABLE_ROLES as readonly string[]).includes(input?.role) ? input.role : "";
     if (!userId || !role) throw new Error("Brugeren eller rollen mangler.");
     return { userId, role };
   })

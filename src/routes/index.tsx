@@ -9,8 +9,11 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { SiteShell } from "@/components/site-shell";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { canOpenBoard, canRunLiveBoard, normalizeRole } from "@/lib/roles";
+import { getMe } from "@/lib/venues";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -27,6 +30,17 @@ const features = [
 
 function Home() {
   const { user, isPending } = useCurrentUserState();
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setRole(null);
+      return;
+    }
+    getMe()
+      .then((profile) => setRole(profile.role))
+      .catch(() => setRole("gaest"));
+  }, [user]);
 
   return (
     <SiteShell>
@@ -47,9 +61,15 @@ function Home() {
                 <div className="h-12 w-64 animate-pulse rounded-xl bg-surface-2" />
               ) : user ? (
                 <>
-                  <a href="/board.html" className="inline-flex min-h-12 items-center rounded-xl bg-primary px-5 font-display text-2xl text-primary-fg">
-                    Åbn scoreboard
-                  </a>
+                  {role && canOpenBoard(normalizeRole(role)) ? (
+                    <a href="/board.html" className="inline-flex min-h-12 items-center rounded-xl bg-primary px-5 font-display text-2xl text-primary-fg">
+                      {canRunLiveBoard(normalizeRole(role)) ? "Åbn scoreboard" : "Min tavle"}
+                    </a>
+                  ) : (
+                    <Link to="/turnering" className="inline-flex min-h-12 items-center rounded-xl bg-primary px-5 font-display text-2xl text-primary-fg">
+                      Se turnering
+                    </Link>
+                  )}
                   <Link to="/konto" className="inline-flex min-h-12 items-center rounded-xl border border-line bg-surface px-5 font-display text-2xl">
                     Min konto
                   </Link>

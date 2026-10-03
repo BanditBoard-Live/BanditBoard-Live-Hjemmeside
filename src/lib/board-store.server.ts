@@ -5,9 +5,12 @@ import {
   canAssignRoles,
   canEditSiteSettings,
   canManageVenues,
+  canOpenBoard,
+  hasPermission,
   normalizeRole,
   type UserRole,
 } from "@/lib/roles";
+import { writeAudit } from "@/lib/audit.server";
 
 export type { UserRole };
 
@@ -193,7 +196,7 @@ export async function createVenueAccount(
     accessCode: string;
   },
 ): Promise<{ profile: Profile; accessCode: string }> {
-  await requireStaff(adminId);
+  const actor = await requireStaff(adminId);
   const code = input.accessCode || makeAccessCode(input.venueName);
   if (!isValidCode(code)) throw new Error("Adgangskoden skal være 8–40 tegn: bogstaver, tal og bindestreg.");
   const sql = await getSql();
@@ -219,6 +222,13 @@ export async function createVenueAccount(
   `;
   const profile = await readProfile(userId);
   if (!profile) throw new Error("Profilen kunne ikke gemmes.");
+  await writeAudit({
+    actorId: actor.userId,
+    actorName: actor.venueName || actor.accountName || actor.email,
+    actorRole: actor.role,
+    action: "Oprettede bruger",
+    detail: `${input.venueName} · ${input.email}`,
+  });
   return { profile, accessCode: code };
 }
 
@@ -234,8 +244,10 @@ export async function setUserRole(
   if (userId === admin.userId && role !== admin.role) {
     throw new Error("Du kan ikke ændre din egen rolle her.");
   }
-  if (admin.role !== "administrator_manager" && (role === "administrator_manager" || target.role === "administrator_manager")) {
-    throw new Error("Kun en administrator-manager kan ændre den rolle.");
+  if (admin.role !== "administrator_manager" && !hasPermission(admin.role, "MANAGE_MANAGERS")) {
+    if (role === "administrator_manager" || target.role === "administrator_manager") {
+      throw new Error("Kun en administrator-manager kan ændre den rolle.");
+    }
   }
   const protectedRole = role !== "admin" && role !== "administrator_manager";
   if (protectedRole && (target.role === "admin" || target.role === "administrator_manager")) {
@@ -249,6 +261,13 @@ export async function setUserRole(
   await sql`update profiles set role = ${role} where user_id = ${userId}`;
   const profile = await readProfile(userId);
   if (!profile) throw new Error("Brugeren blev ikke fundet.");
+  await writeAudit({
+    actorId: admin.userId,
+    actorName: admin.venueName || admin.accountName || admin.email,
+    actorRole: admin.role,
+    action: "Ændrede rolle",
+    detail: `${target.venueName || target.email}: ${target.role} → ${role}`,
+  });
   return profile;
 }
 
@@ -364,6 +383,13 @@ export async function removeVenue(adminId: string, userId: string): Promise<{ ok
   if (userId === admin.userId) throw new Error("Du kan ikke slette din egen konto her.");
   const sql = await getSql();
   await sql`delete from "user" where id = ${userId}`;
+  await writeAudit({
+    actorId: admin.userId,
+    actorName: admin.venueName || admin.accountName || admin.email,
+    actorRole: admin.role,
+    action: "Slettede bruger",
+    detail: userId,
+  });
   return { ok: true };
 }
 
@@ -387,7 +413,7 @@ export async function readSettings(): Promise<SiteSettings> {
 }
 
 export async function writeSettings(adminId: string, input: SiteSettings): Promise<SiteSettings> {
-  await requireRole(adminId, canEditSiteSettings, "Kun den, der administrerer indstillinger, kan gøre det.");
+  const actor = await requireRole(adminId, canEditSiteSettings, "Kun den, der administrerer indstillinger, kan gøre det.");
   const sql = await getSql();
   await sql`
     insert into site_settings (id, facebook, instagram, youtube, contact_email, contact_phone)
@@ -399,12 +425,20 @@ export async function writeSettings(adminId: string, input: SiteSettings): Promi
       contact_email = excluded.contact_email,
       contact_phone = excluded.contact_phone
   `;
+  await writeAudit({
+    actorId: actor.userId,
+    actorName: actor.venueName || actor.accountName || actor.email,
+    actorRole: actor.role,
+    action: "Ændrede indstillinger",
+    detail: "Bund og sociale medier",
+  });
   return readSettings();
 }
 
 export async function readBoardState(userId: string): Promise<{ state: string | null; updatedAt: string | null }> {
   const profile = await ensureProfile(userId);
-  if (!profile.active) return { state: null, updatedAt: null };
+  if (!profile.active) throw new Error("Adgangen er lukket.");
+  if (!canOpenBoard(profile.role)) throw new Error("Du har ikke rettigheder til at tilgå scoreboardet.");
   const sql = await getSql();
   const rows = await sql.query<{ state: string; updated_at: string }>(
     `select state, updated_at::text as updated_at from board_state where user_id = $1`,
@@ -414,16 +448,46 @@ export async function readBoardState(userId: string): Promise<{ state: string | 
   return { state: rows[0].state, updatedAt: rows[0].updated_at };
 }
 
+function scoreLine(raw: string | null | undefined): string {
+  if (!raw) return "";
+  try {
+    const data = JSON.parse(raw) as {
+      settings?: { tourName?: string };
+      game?: { sides?: { score?: number }[] };
+    };
+    const sides = data.game?.sides;
+    if (!Array.isArray(sides) || sides.length === 0) return "";
+    const scores = sides.map((side) => Number(side.score) || 0).join("–");
+    const tour = data.settings?.tourName?.trim() || "Scoreboard";
+    return `${tour}: ${scores}`;
+  } catch {
+    return "";
+  }
+}
+
 export async function writeBoardState(userId: string, state: string): Promise<{ updatedAt: string }> {
   const profile = await ensureProfile(userId);
   if (!profile.active) throw new Error("Adgangen er lukket.");
+  if (!canOpenBoard(profile.role)) throw new Error("Du har ikke rettigheder til at tilgå scoreboardet.");
   if (state.length > 2_000_000) throw new Error("Scoreboardet er for stort til at gemme.");
   const sql = await getSql();
+  const previous = await sql.query<{ state: string }>(`select state from board_state where user_id = $1`, [userId]);
+  const before = scoreLine(previous[0]?.state);
+  const after = scoreLine(state);
   const rows = await sql<{ updated_at: string }>`
     insert into board_state (user_id, state, updated_at)
     values (${userId}, ${state}, now())
     on conflict (user_id) do update set state = excluded.state, updated_at = now()
     returning updated_at::text as updated_at
   `;
+  if (after && after !== before) {
+    await writeAudit({
+      actorId: profile.userId,
+      actorName: profile.venueName || profile.accountName || profile.email,
+      actorRole: profile.role,
+      action: "Ændrede score",
+      detail: before ? `Fra ${before}. Til ${after}.` : after,
+    });
+  }
   return { updatedAt: rows[0]?.updated_at ?? new Date().toISOString() };
 }

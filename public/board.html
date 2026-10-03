@@ -1670,7 +1670,7 @@ if(!g)return `<div class="tvidle">${brandMark('xl')}<b>${esc(st.venue)}</b><span
 VIS=visOf(st.view);if(st.view==='big')return bigBoard(g);
 return `<div class="tvwrap">${g.over?`<div class="winbig" style="margin-bottom:14px">${esc(g.winner?sideFull(side(g,g.winner))+' vandt':'Uafgjort')}</div>`:''}${sidesHTML(g,st.view)}</div>`}
 
-function render(){VIS=null;applyTheme();const root=$('#root');
+function render(){const blocked=boardBlockReason();if(blocked){const root=$('#root');if(root)root.innerHTML=boardDenied(blocked);return}VIS=null;applyTheme();const root=$('#root');
 if(MODE==='turnering'){root.innerHTML=tmDisplay();fitStage()}
 else if(MODE==='tv')root.innerHTML=tvView()+evInfo('tv')+'<div class="tvhint">Dobbelttryk for fuld skærm</div>';
 else if(MODE.startsWith('overlay'))root.innerHTML=ovDesignStyle()+overlay();
@@ -2764,6 +2764,7 @@ async function pushCloud(){
   try{
     const r=await fetch('/api/board/state',{method:'PUT',headers:bbHeaders(),credentials:'include',body:JSON.stringify({state:slimForCloud(S)})});
     if(r.status===401){location.replace('/login?next='+encodeURIComponent(location.pathname+location.hash));return}
+    if(r.status===403){const j=await r.json().catch(()=>({}));document.body.innerHTML=boardDenied(j.error||'Du har ikke rettigheder til at tilgå scoreboardet.');scheduleCloud.armed=false;return}
     if(r.ok){const j=await r.json(); if(j.updatedAt) cloudRev=j.updatedAt}
   }catch(e){}
 }
@@ -2791,6 +2792,19 @@ function paintShell(){
   else if(MODE==='mig'||MODE.startsWith('profil/'))document.body.className='phone';
   else if(isRemoteMode()){document.body.className='remote';const rc=MODE.split('/')[1];if(rc){setRemoteCode(decodeURIComponent(rc).toUpperCase());history.replaceState(null,'','#remote')}}
 }
+function boardDenied(text){
+  return '<main style="min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px"><div><p style="letter-spacing:.18em;color:#EF4444;font-weight:800">ACCESS DENIED</p><h1>Du har ikke rettigheder til at tilgå scoreboardet.</h1><p class="mut">'+text+'</p><p style="margin-top:16px"><a href="/konto" style="color:#19C3FF">Til kontoen</a></p></div></main>';
+}
+function boardBlockReason(){
+  const p=window.__bbPerms;
+  if(!Array.isArray(p)) return '';
+  const live=p.indexOf('USE_SCOREBOARD')>=0;
+  const own=live||p.indexOf('VIEW_OWN_BOARD')>=0;
+  if(!own) return 'Din rolle er gæst eller har ikke adgang til tavlen.';
+  const display=MODE==='tv'||MODE.indexOf('overlay')===0||MODE==='sponsor'||MODE==='sponsor-green'||MODE==='turnering'||isRemoteMode();
+  if(display && !live && p.indexOf('USE_REMOTE')<0) return 'Remote, TV og overlay kræver scoreboard-admin.';
+  return '';
+}
 async function startApp(){
   const root=$('#root');
   if(root) root.innerHTML='<div style="display:grid;place-items:center;min-height:70vh;color:#94A3B8">Åbner scoreboard…</div>';
@@ -2801,6 +2815,9 @@ async function startApp(){
     document.body.innerHTML='<main style="min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px"><div><img src="/branding/logo.png" alt="BanditBoard Live" style="height:72px;margin:0 auto 16px"><h1>Adgangen er lukket</h1><p class="mut">Kontakt BanditBoard, hvis scoreboardet skal åbnes igen.</p><p style="margin-top:16px"><a href="/" style="color:#19C3FF">Til forsiden</a></p></div></main>';
     return;
   }
+  window.__bbPerms=Array.isArray(me.permissions)?me.permissions:[];
+  const blocked=boardBlockReason();
+  if(blocked){document.body.innerHTML=boardDenied(blocked);return}
   KEY='cueboard.v1.'+me.id;
   const local=bindTables(load());
   let remote=null, remoteAt='';

@@ -1,25 +1,112 @@
+export const PERMISSIONS = [
+  "VIEW_PUBLIC",
+  "VIEW_OWN_BOARD",
+  "USE_SCOREBOARD",
+  "EDIT_SCORE",
+  "EDIT_PLAYER",
+  "EDIT_TEAM",
+  "EDIT_MATCH",
+  "CONTROL_TIMER",
+  "USE_REMOTE",
+  "CREATE_TOURNAMENT",
+  "EDIT_TOURNAMENT",
+  "DELETE_TOURNAMENT",
+  "IMPORT_PLAYERS",
+  "EXPORT_RESULTS",
+  "MANAGE_USERS",
+  "MANAGE_ROLES",
+  "MANAGE_PUBS",
+  "MANAGE_SETTINGS",
+  "MANAGE_SOCIAL",
+  "MANAGE_ADMINS",
+  "MANAGE_MANAGERS",
+] as const;
+
+export type Permission = (typeof PERMISSIONS)[number];
+
 export const USER_ROLES = [
   "gaest",
   "bruger",
   "scoreboard_admin",
   "administrer_scoreboard",
-  "administrer_indstillinger",
   "admin",
   "administrator_manager",
+  "administrer_indstillinger",
   "udlejning",
 ] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
+
+/** Roles an admin can hand out. Legacy roles stay valid for old accounts. */
+export const ASSIGNABLE_ROLES = [
+  "gaest",
+  "bruger",
+  "scoreboard_admin",
+  "administrer_scoreboard",
+  "admin",
+  "administrator_manager",
+] as const;
 
 export const ROLE_LABEL: Record<UserRole, string> = {
   gaest: "Gæst",
   bruger: "Bruger",
   scoreboard_admin: "Scoreboard-admin",
   administrer_scoreboard: "Administrer scoreboard",
-  administrer_indstillinger: "Administrer indstillinger",
   admin: "Admin",
   administrator_manager: "Administrator-manager",
+  administrer_indstillinger: "Administrer indstillinger",
   udlejning: "Udlejning",
+};
+
+export const ROLE_BLURB: Record<(typeof ASSIGNABLE_ROLES)[number], string> = {
+  gaest: "Kun offentlig visning. Ingen scoreboard.",
+  bruger: "Egen tavle og egne funktioner. Ingen administration.",
+  scoreboard_admin: "Køre live scoreboard: point, spillere, timer, kampe og remote.",
+  administrer_scoreboard: "Alt scoreboard-admin kan, plus turneringer, spillere og import.",
+  admin: "Brugere, pubber, indstillinger og scoreboard. Ikke andre managere.",
+  administrator_manager: "Fuld adgang, også andre administratorer og managere.",
+};
+
+const SCOREBOARD_RUN: Permission[] = [
+  "VIEW_PUBLIC",
+  "VIEW_OWN_BOARD",
+  "USE_SCOREBOARD",
+  "EDIT_SCORE",
+  "EDIT_PLAYER",
+  "EDIT_TEAM",
+  "EDIT_MATCH",
+  "CONTROL_TIMER",
+  "USE_REMOTE",
+];
+
+const SCOREBOARD_SETUP: Permission[] = [
+  ...SCOREBOARD_RUN,
+  "CREATE_TOURNAMENT",
+  "EDIT_TOURNAMENT",
+  "DELETE_TOURNAMENT",
+  "IMPORT_PLAYERS",
+  "EXPORT_RESULTS",
+];
+
+const ADMIN_PERMS: Permission[] = [
+  ...SCOREBOARD_SETUP,
+  "MANAGE_USERS",
+  "MANAGE_ROLES",
+  "MANAGE_PUBS",
+  "MANAGE_SETTINGS",
+  "MANAGE_SOCIAL",
+  "MANAGE_ADMINS",
+];
+
+const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
+  gaest: ["VIEW_PUBLIC"],
+  bruger: ["VIEW_PUBLIC", "VIEW_OWN_BOARD"],
+  scoreboard_admin: SCOREBOARD_RUN,
+  administrer_scoreboard: SCOREBOARD_SETUP,
+  admin: ADMIN_PERMS,
+  administrator_manager: PERMISSIONS,
+  administrer_indstillinger: ["VIEW_PUBLIC", "MANAGE_SETTINGS", "MANAGE_SOCIAL"],
+  udlejning: ["VIEW_PUBLIC", "VIEW_OWN_BOARD", "MANAGE_PUBS"],
 };
 
 export function normalizeRole(role: string): UserRole {
@@ -28,32 +115,47 @@ export function normalizeRole(role: string): UserRole {
   return "gaest";
 }
 
+export function permissionsFor(role: UserRole): readonly Permission[] {
+  return ROLE_PERMISSIONS[normalizeRole(role)] ?? ROLE_PERMISSIONS.gaest;
+}
+
+export function hasPermission(role: UserRole, permission: Permission): boolean {
+  return permissionsFor(role).includes(permission);
+}
+
+export function hasAnyPermission(role: UserRole, permissions: readonly Permission[]): boolean {
+  const owned = permissionsFor(role);
+  return permissions.some((permission) => owned.includes(permission));
+}
+
 export function canAssignRoles(role: UserRole): boolean {
-  return role === "admin" || role === "administrator_manager";
+  return hasPermission(role, "MANAGE_ROLES");
 }
 
 export function canManageVenues(role: UserRole): boolean {
-  return canAssignRoles(role) || role === "udlejning";
+  return hasAnyPermission(role, ["MANAGE_PUBS", "MANAGE_USERS"]);
 }
 
 export function canEditSiteSettings(role: UserRole): boolean {
-  return canAssignRoles(role) || role === "administrer_indstillinger";
+  return hasAnyPermission(role, ["MANAGE_SETTINGS", "MANAGE_SOCIAL"]);
+}
+
+export function canOpenBoard(role: UserRole): boolean {
+  return hasAnyPermission(role, ["VIEW_OWN_BOARD", "USE_SCOREBOARD"]);
 }
 
 export function canUseScoreboard(role: UserRole): boolean {
-  return (
-    role === "bruger" ||
-    role === "scoreboard_admin" ||
-    role === "administrer_scoreboard" ||
-    role === "udlejning" ||
-    canAssignRoles(role)
-  );
+  return canOpenBoard(role);
+}
+
+export function canRunLiveBoard(role: UserRole): boolean {
+  return hasPermission(role, "USE_SCOREBOARD");
 }
 
 export function canManageTournament(role: UserRole): boolean {
-  return role === "scoreboard_admin" || role === "administrer_scoreboard" || canAssignRoles(role);
+  return hasPermission(role, "EDIT_TOURNAMENT");
 }
 
 export function canOpenAdmin(role: UserRole): boolean {
-  return canManageVenues(role) || canEditSiteSettings(role);
+  return hasAnyPermission(role, ["MANAGE_USERS", "MANAGE_PUBS", "MANAGE_SETTINGS", "MANAGE_ROLES"]);
 }

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { ensureProfile } from "@/lib/board-store.server";
-import { canManageTournament } from "@/lib/roles";
+import { canManageTournament, hasPermission } from "@/lib/roles";
 
 export type PublicTournament = {
   name: string;
@@ -57,7 +57,13 @@ export async function readPublicTournament(): Promise<PublicTournament> {
 
 async function requireTournamentEditor(userId: string) {
   const profile = await ensureProfile(userId);
-  if (!canManageTournament(profile.role)) throw new Error("Kun scoreboard-admin kan rette turneringen.");
+  if (!canManageTournament(profile.role)) throw new Error("Kun den, der administrerer scoreboardet, kan rette turneringen.");
+  return profile;
+}
+
+async function requireTournamentDelete(userId: string) {
+  const profile = await ensureProfile(userId);
+  if (!hasPermission(profile.role, "DELETE_TOURNAMENT")) throw new Error("Du må ikke slette turneringsdata.");
   return profile;
 }
 
@@ -105,7 +111,7 @@ export async function addRanking(userId: string, name: string, points: number, w
 }
 
 export async function removeRanking(userId: string, id: string): Promise<PublicTournament> {
-  await requireTournamentEditor(userId);
+  await requireTournamentDelete(userId);
   const sql = await getSql();
   await sql`delete from ranking_rows where id = ${clip(id, 80)}`;
   return readPublicTournament();
@@ -124,7 +130,7 @@ export async function addHistory(userId: string, title: string, detail: string):
 }
 
 export async function removeHistory(userId: string, id: string): Promise<PublicTournament> {
-  await requireTournamentEditor(userId);
+  await requireTournamentDelete(userId);
   const sql = await getSql();
   await sql`delete from match_history where id = ${clip(id, 80)}`;
   return readPublicTournament();

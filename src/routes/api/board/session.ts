@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import { ensureProfile } from "@/lib/board-store.server";
+import { permissionsFor } from "@/lib/roles";
 
 function bearer(request: Request): string | undefined {
   const header = request.headers.get("authorization") || "";
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/api/board/session")({
           venueName: profile.venueName,
           contactName: profile.contactName,
           active: profile.active,
+          permissions: permissionsFor(profile.role),
         });
       },
     },

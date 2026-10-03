@@ -6,7 +6,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { signOut } from "@/lib/auth/client";
 import { getSiteSettings, getMe, type PublicSettings } from "@/lib/venues";
-import { canUseScoreboard, type UserRole } from "@/lib/roles";
+import { canOpenBoard, canRunLiveBoard, hasPermission, type UserRole } from "@/lib/roles";
 
 const emptySettings: PublicSettings = {
   facebook: "",
@@ -60,10 +60,20 @@ export function SiteShell({ children }: { children: ReactNode }) {
               <Link to="/turnering" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-muted hover:text-fg">
                 Turnering
               </Link>
-              {role && canUseScoreboard(role) ? (
+              {role && canOpenBoard(role) ? (
                 <a href="/board.html" className="inline-flex min-h-11 items-center rounded-xl bg-primary px-4 font-display text-lg font-bold text-primary-fg">
-                  Scoreboard
+                  {canRunLiveBoard(role) ? "Scoreboard" : "Min tavle"}
                 </a>
+              ) : null}
+              {role && canRunLiveBoard(role) ? (
+                <a href="/board.html#remote" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-muted hover:text-fg">
+                  Remote
+                </a>
+              ) : null}
+              {role && hasPermission(role, "MANAGE_USERS") ? (
+                <Link to="/admin" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-muted hover:text-fg">
+                  Admin
+                </Link>
               ) : null}
               {!gate ? (
                 <button

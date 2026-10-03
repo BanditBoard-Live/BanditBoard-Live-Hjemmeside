@@ -10,6 +10,7 @@ import {
   getMe,
   getSiteSettings,
   listVenueAccounts,
+  listAuditLog,
   newAccessCode,
   saveSiteSettings,
   setUserRole,
@@ -19,7 +20,7 @@ import {
   type PublicSettings,
   type VenueDraft,
 } from "@/lib/venues";
-import { ROLE_LABEL, USER_ROLES, canAssignRoles, canEditSiteSettings, canManageVenues, canOpenAdmin } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, ROLE_BLURB, ROLE_LABEL, canAssignRoles, canEditSiteSettings, canManageVenues, canOpenAdmin, hasPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
@@ -53,6 +54,7 @@ function AdminPage() {
   const [pending, setPending] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [audit, setAudit] = useState<Awaited<ReturnType<typeof listAuditLog>>>([]);
 
   async function reload() {
     const profile = await getMe();
@@ -61,6 +63,9 @@ function AdminPage() {
     setSettings(site);
     if (canManageVenues(profile.role)) setVenues(await listVenueAccounts());
     else setVenues([]);
+    if (hasPermission(profile.role, "MANAGE_USERS") || hasPermission(profile.role, "MANAGE_ROLES")) {
+      setAudit(await listAuditLog());
+    }
   }
 
   useEffect(() => {
@@ -130,14 +135,15 @@ function AdminPage() {
           <h1 className="font-display text-5xl sm:text-6xl">Pubber og klubber</h1>
           <p className="mt-2 max-w-2xl text-muted">
             {canAssignRoles(me.role)
-              ? "Søg en bruger frem og vælg rollen. Gæster kan se turneringen. Scoreboard-roller kører tavlen."
+              ? "Søg en bruger frem og vælg rollen. Gæster kan ikke åbne scoreboardet."
               : "Du kan det, din rolle giver adgang til."}
           </p>
           {canAssignRoles(me.role) ? (
             <ul className="mt-4 grid gap-2 text-sm text-muted sm:grid-cols-2">
-              {USER_ROLES.filter((role) => role !== "udlejning").map((role) => (
+              {ASSIGNABLE_ROLES.map((role) => (
                 <li key={role} className="rounded-xl border border-line bg-surface px-3 py-2">
                   <span className="text-primary">{ROLE_LABEL[role]}</span>
+                  <span className="mt-1 block">{ROLE_BLURB[role]}</span>
                 </li>
               ))}
             </ul>
@@ -252,7 +258,7 @@ function AdminPage() {
                       className={inputClass}
                       value={venue.role}
                       onChange={(event) => {
-                        const role = event.target.value as (typeof USER_ROLES)[number];
+                        const role = event.target.value as (typeof ASSIGNABLE_ROLES)[number];
                         const label = venue.venueName || venue.email;
                         void setUserRole({ data: { userId: venue.userId, role } })
                           .then(async () => {
@@ -262,7 +268,7 @@ function AdminPage() {
                           .catch((err: Error) => setError(err.message));
                       }}
                     >
-                      {USER_ROLES.filter((role) => me.role === "administrator_manager" || role !== "administrator_manager").map((role) => (
+                      {ASSIGNABLE_ROLES.filter((role) => hasPermission(me.role, "MANAGE_MANAGERS") || role !== "administrator_manager").map((role) => (
                         <option key={role} value={role}>{ROLE_LABEL[role]}</option>
                       ))}
                     </select>
@@ -335,6 +341,22 @@ function AdminPage() {
           ) ? (
             <p className="text-sm text-muted">Ingen brugere matcher søgningen.</p>
           ) : null}
+        </section>
+        ) : null}
+
+        {hasPermission(me.role, "MANAGE_USERS") || hasPermission(me.role, "MANAGE_ROLES") ? (
+        <section className="grid gap-2 rounded-card border border-line bg-surface p-5">
+          <h2 className="font-display text-3xl">Log</h2>
+          <ul className="grid gap-2">
+            {audit.length === 0 ? <li className="text-sm text-muted">Ingen handlinger endnu.</li> : null}
+            {audit.map((row) => (
+              <li key={row.id} className="rounded-xl border border-line px-3 py-2 text-sm">
+                <p className="text-muted">{new Date(row.at).toLocaleString("da-DK")} · {ROLE_LABEL[row.actorRole as keyof typeof ROLE_LABEL] || row.actorRole}</p>
+                <p><span className="font-semibold">{row.actorName || "Bruger"}</span> · {row.action}</p>
+                {row.detail ? <p className="text-muted">{row.detail}</p> : null}
+              </li>
+            ))}
+          </ul>
         </section>
         ) : null}
 
