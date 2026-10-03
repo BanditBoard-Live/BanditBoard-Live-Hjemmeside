@@ -14,6 +14,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as KontoRouteImport } from './routes/konto'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OpretRouteImport } from './routes/opret'
+import { Route as TurneringRouteImport } from './routes/turnering'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBoardSessionRouteImport } from './routes/api/board/session'
 import { Route as ApiBoardStateRouteImport } from './routes/api/board/state'
@@ -43,6 +44,11 @@ const OpretRoute = OpretRouteImport.update({
   path: '/opret',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TurneringRoute = TurneringRouteImport.update({
+  id: '/turnering',
+  path: '/turnering',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/konto': typeof KontoRoute
   '/login': typeof LoginRoute
   '/opret': typeof OpretRoute
+  '/turnering': typeof TurneringRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/board/session': typeof ApiBoardSessionRoute
   '/api/board/state': typeof ApiBoardStateRoute
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/konto': typeof KontoRoute
   '/login': typeof LoginRoute
   '/opret': typeof OpretRoute
+  '/turnering': typeof TurneringRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/board/session': typeof ApiBoardSessionRoute
   '/api/board/state': typeof ApiBoardStateRoute
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/konto': typeof KontoRoute
   '/login': typeof LoginRoute
   '/opret': typeof OpretRoute
+  '/turnering': typeof TurneringRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/board/session': typeof ApiBoardSessionRoute
   '/api/board/state': typeof ApiBoardStateRoute
@@ -98,6 +107,7 @@ export interface FileRouteTypes {
     | '/konto'
     | '/login'
     | '/opret'
+    | '/turnering'
     | '/api/auth/$'
     | '/api/board/session'
     | '/api/board/state'
@@ -108,6 +118,7 @@ export interface FileRouteTypes {
     | '/konto'
     | '/login'
     | '/opret'
+    | '/turnering'
     | '/api/auth/$'
     | '/api/board/session'
     | '/api/board/state'
@@ -118,6 +129,7 @@ export interface FileRouteTypes {
     | '/konto'
     | '/login'
     | '/opret'
+    | '/turnering'
     | '/api/auth/$'
     | '/api/board/session'
     | '/api/board/state'
@@ -129,6 +141,7 @@ export interface RootRouteChildren {
   KontoRoute: typeof KontoRoute
   LoginRoute: typeof LoginRoute
   OpretRoute: typeof OpretRoute
+  TurneringRoute: typeof TurneringRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBoardSessionRoute: typeof ApiBoardSessionRoute
   ApiBoardStateRoute: typeof ApiBoardStateRoute
@@ -171,6 +184,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OpretRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/turnering': {
+      id: '/turnering'
+      path: '/turnering'
+      fullPath: '/turnering'
+      preLoaderRoute: typeof TurneringRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -201,6 +221,7 @@ const rootRouteChildren: RootRouteChildren = {
   KontoRoute: KontoRoute,
   LoginRoute: LoginRoute,
   OpretRoute: OpretRoute,
+  TurneringRoute: TurneringRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBoardSessionRoute: ApiBoardSessionRoute,
   ApiBoardStateRoute: ApiBoardStateRoute,

@@ -1,8 +1,15 @@
 import { randomBytes } from "node:crypto";
-import { hashPassword } from "better-auth/crypto";
+import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { getSql } from "@/lib/db";
+import {
+  canAssignRoles,
+  canEditSiteSettings,
+  canManageVenues,
+  normalizeRole,
+  type UserRole,
+} from "@/lib/roles";
 
-export type UserRole = "admin" | "udlejning" | "klub";
+export type { UserRole };
 
 export type Profile = {
   userId: string;
@@ -57,7 +64,7 @@ function mapProfile(row: ProfileRow): Profile {
     userId: row.user_id,
     email: row.email ?? "",
     accountName: row.account_name ?? "",
-    role: row.role === "admin" || row.role === "udlejning" ? row.role : "klub",
+    role: normalizeRole(row.role),
     venueName: row.venue_name,
     contactName: row.contact_name,
     phone: row.phone,
@@ -94,10 +101,11 @@ export async function ensureProfile(userId: string): Promise<Profile> {
   );
   const user = users[0];
   if (!user) throw new Error("Brugeren blev ikke fundet.");
-  const admins = await sql<{ n: number }>`select count(*) as n from profiles where role = 'admin'`;
-  // Only the very first account becomes admin. Everyone who signs up later
-  // stays a normal user until an admin grants access.
-  const role = Number(admins[0]?.n ?? 0) === 0 ? "admin" : "klub";
+  const bosses = await sql<{ n: number }>`
+    select count(*) as n from profiles where role in ('admin', 'administrator_manager')
+  `;
+  // A brand-new site still needs one manager. Every later signup is a guest.
+  const role = Number(bosses[0]?.n ?? 0) === 0 ? "administrator_manager" : "gaest";
   await sql`
     insert into profiles (user_id, role, venue_name, contact_name)
     values (${userId}, ${role}, ${user.name || "Min klub"}, ${user.name || ""})
@@ -138,18 +146,22 @@ export async function saveOwnDetails(
   return profile;
 }
 
-async function requireAdmin(userId: string): Promise<Profile> {
+async function requireRole(
+  userId: string,
+  allowed: (role: UserRole) => boolean,
+  message: string,
+): Promise<Profile> {
   const profile = await ensureProfile(userId);
-  if (profile.role !== "admin") throw new Error("Kun administratoren kan gøre det.");
+  if (!allowed(profile.role)) throw new Error(message);
   return profile;
 }
 
+async function requireAdmin(userId: string): Promise<Profile> {
+  return requireRole(userId, canAssignRoles, "Kun en administrator kan gøre det.");
+}
+
 async function requireStaff(userId: string): Promise<Profile> {
-  const profile = await ensureProfile(userId);
-  if (profile.role !== "admin" && profile.role !== "udlejning") {
-    throw new Error("Kun administratoren eller udlejning kan gøre det.");
-  }
-  return profile;
+  return requireRole(userId, canManageVenues, "Kun en administrator kan gøre det.");
 }
 
 export function makeAccessCode(venueName: string): string {
@@ -201,7 +213,7 @@ export async function createVenueAccount(
     insert into profiles (
       user_id, role, venue_name, contact_name, phone, address, postal_code, city, notes, access_code, created_by
     ) values (
-      ${userId}, 'klub', ${input.venueName}, ${input.contactName}, ${input.phone},
+      ${userId}, 'bruger', ${input.venueName}, ${input.contactName}, ${input.phone},
       ${input.address}, ${input.postalCode}, ${input.city}, ${input.notes}, ${code}, ${adminId}
     )
   `;
@@ -216,15 +228,21 @@ export async function setUserRole(
   role: UserRole,
 ): Promise<Profile> {
   const admin = await requireAdmin(adminId);
-  if (role !== "admin" && role !== "udlejning" && role !== "klub") throw new Error("Ukendt rolle.");
-  if (userId === admin.userId && role !== "admin") {
-    throw new Error("Du kan ikke fjerne din egen admin-adgang.");
-  }
+  if (!normalizeRole(role) || role !== normalizeRole(role)) throw new Error("Ukendt rolle.");
   const target = await readProfile(userId);
   if (!target) throw new Error("Brugeren blev ikke fundet.");
-  if (role !== "admin" && target.role === "admin") {
+  if (userId === admin.userId && role !== admin.role) {
+    throw new Error("Du kan ikke ændre din egen rolle her.");
+  }
+  if (admin.role !== "administrator_manager" && (role === "administrator_manager" || target.role === "administrator_manager")) {
+    throw new Error("Kun en administrator-manager kan ændre den rolle.");
+  }
+  const protectedRole = role !== "admin" && role !== "administrator_manager";
+  if (protectedRole && (target.role === "admin" || target.role === "administrator_manager")) {
     const sql = await getSql();
-    const admins = await sql<{ n: number }>`select count(*) as n from profiles where role = 'admin'`;
+    const admins = await sql<{ n: number }>`
+      select count(*) as n from profiles where role in ('admin', 'administrator_manager')
+    `;
     if (Number(admins[0]?.n ?? 0) <= 1) throw new Error("Der skal være mindst én administrator.");
   }
   const sql = await getSql();
@@ -232,6 +250,29 @@ export async function setUserRole(
   const profile = await readProfile(userId);
   if (!profile) throw new Error("Brugeren blev ikke fundet.");
   return profile;
+}
+
+export async function deleteOwnAccount(userId: string, password: string): Promise<{ ok: true }> {
+  const profile = await ensureProfile(userId);
+  const sql = await getSql();
+  if (profile.role === "admin" || profile.role === "administrator_manager") {
+    const admins = await sql<{ n: number }>`
+      select count(*) as n from profiles where role in ('admin', 'administrator_manager')
+    `;
+    if (Number(admins[0]?.n ?? 0) <= 1) {
+      throw new Error("Du er den eneste administrator. Giv rollen til en anden, før du sletter dig selv.");
+    }
+  }
+  const accounts = await sql.query<{ password: string | null }>(
+    `select password from account where "userId" = $1 and "providerId" = 'credential'`,
+    [userId],
+  );
+  const hash = accounts[0]?.password;
+  if (!hash) throw new Error("Kontoen har ingen adgangskode.");
+  const ok = await verifyPassword({ hash, password });
+  if (!ok) throw new Error("Adgangskoden passer ikke.");
+  await sql`delete from "user" where id = ${userId}`;
+  return { ok: true };
 }
 
 export async function listVenues(adminId: string): Promise<Profile[]> {
@@ -257,7 +298,7 @@ export async function updateVenue(
   const actor = await requireStaff(adminId);
   const current = await readProfile(input.userId);
   if (!current) throw new Error("Brugeren blev ikke fundet.");
-  if (current.role === "admin" && actor.role !== "admin") {
+  if ((current.role === "admin" || current.role === "administrator_manager") && !canAssignRoles(actor.role)) {
     throw new Error("Kun administratoren kan rette en administrator.");
   }
   const sql = await getSql();
@@ -285,7 +326,7 @@ export async function setVenueActive(adminId: string, userId: string, active: bo
   if (userId === actor.userId && !active) throw new Error("Du kan ikke lukke din egen adgang.");
   const current = await readProfile(userId);
   if (!current) throw new Error("Brugeren blev ikke fundet.");
-  if (current.role === "admin" && actor.role !== "admin") {
+  if ((current.role === "admin" || current.role === "administrator_manager") && !canAssignRoles(actor.role)) {
     throw new Error("Kun administratoren kan lukke en administrator.");
   }
   const sql = await getSql();
@@ -299,7 +340,7 @@ export async function regenerateAccessCode(adminId: string, userId: string, cust
   const actor = await requireStaff(adminId);
   const current = await readProfile(userId);
   if (!current) throw new Error("Brugeren blev ikke fundet.");
-  if (current.role === "admin" && actor.role !== "admin") {
+  if ((current.role === "admin" || current.role === "administrator_manager") && !canAssignRoles(actor.role)) {
     throw new Error("Kun administratoren kan skifte en administrators kode.");
   }
   const code = (custom || "").trim() || makeAccessCode(current.venueName || current.accountName);
@@ -346,7 +387,7 @@ export async function readSettings(): Promise<SiteSettings> {
 }
 
 export async function writeSettings(adminId: string, input: SiteSettings): Promise<SiteSettings> {
-  await requireAdmin(adminId);
+  await requireRole(adminId, canEditSiteSettings, "Kun den, der administrerer indstillinger, kan gøre det.");
   const sql = await getSql();
   await sql`
     insert into site_settings (id, facebook, instagram, youtube, contact_email, contact_phone)

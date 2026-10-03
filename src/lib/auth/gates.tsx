@@ -64,7 +64,7 @@ export function SignInGate({
 }
 
 export function SignInButtons() {
-  return <Navigate to="/login" />;
+  return <Navigate to="/login" search={{ next: "/konto" }} />;
 }
 
 /**

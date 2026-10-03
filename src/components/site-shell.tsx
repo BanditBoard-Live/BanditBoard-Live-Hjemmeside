@@ -5,7 +5,8 @@ import { Facebook, Instagram, Youtube } from "lucide-react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { signOut } from "@/lib/auth/client";
-import { getSiteSettings, type PublicSettings } from "@/lib/venues";
+import { getSiteSettings, getMe, type PublicSettings } from "@/lib/venues";
+import { canUseScoreboard, type UserRole } from "@/lib/roles";
 
 const emptySettings: PublicSettings = {
   facebook: "",
@@ -19,6 +20,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
   const { user, isPending } = useCurrentUserState();
   const [settings, setSettings] = useState<PublicSettings>(emptySettings);
   const [signingOut, setSigningOut] = useState(false);
+  const [role, setRole] = useState<UserRole | null>(null);
   const gate = typeof document !== "undefined" && hasGateSessionMarker();
 
   useEffect(() => {
@@ -26,6 +28,16 @@ export function SiteShell({ children }: { children: ReactNode }) {
       .then(setSettings)
       .catch(() => setSettings(emptySettings));
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setRole(null);
+      return;
+    }
+    getMe()
+      .then((profile) => setRole(profile.role))
+      .catch(() => setRole("gaest"));
+  }, [user]);
 
   const socials = [
     { href: settings.facebook, label: "Facebook", icon: Facebook },
@@ -45,9 +57,14 @@ export function SiteShell({ children }: { children: ReactNode }) {
           ) : user ? (
             <nav className="flex flex-wrap items-center gap-2">
               <ShellLink to="/konto">Konto</ShellLink>
-              <a href="/board.html" className="inline-flex min-h-11 items-center rounded-xl bg-primary px-4 font-display text-lg font-bold text-primary-fg">
-                Scoreboard
-              </a>
+              <Link to="/turnering" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-muted hover:text-fg">
+                Turnering
+              </Link>
+              {role && canUseScoreboard(role) ? (
+                <a href="/board.html" className="inline-flex min-h-11 items-center rounded-xl bg-primary px-4 font-display text-lg font-bold text-primary-fg">
+                  Scoreboard
+                </a>
+              ) : null}
               {!gate ? (
                 <button
                   type="button"
@@ -93,6 +110,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
               <li><Link to="/login" search={{ next: "/konto" }} className="hover:text-fg">Log ind</Link></li>
               <li><Link to="/opret" className="hover:text-fg">Opret bruger</Link></li>
               <li><Link to="/konto" className="hover:text-fg">Min konto</Link></li>
+              <li><Link to="/turnering" className="hover:text-fg">Turnering</Link></li>
             </ul>
           </div>
           <div>

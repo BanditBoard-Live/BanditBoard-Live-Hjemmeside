@@ -19,6 +19,7 @@ import {
   type PublicSettings,
   type VenueDraft,
 } from "@/lib/venues";
+import { ROLE_LABEL, USER_ROLES, canAssignRoles, canEditSiteSettings, canManageVenues, canOpenAdmin } from "@/lib/roles";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
@@ -54,10 +55,12 @@ function AdminPage() {
   const [query, setQuery] = useState("");
 
   async function reload() {
-    const [profile, list, site] = await Promise.all([getMe(), listVenueAccounts(), getSiteSettings()]);
+    const profile = await getMe();
     setMe(profile);
-    setVenues(list);
+    const site = await getSiteSettings();
     setSettings(site);
+    if (canManageVenues(profile.role)) setVenues(await listVenueAccounts());
+    else setVenues([]);
   }
 
   useEffect(() => {
@@ -75,12 +78,12 @@ function AdminPage() {
     );
   }
   if (!user) return <RedirectToSignIn />;
-  if (me && me.role === "klub") {
+  if (!me || !canOpenAdmin(me.role)) {
     return (
       <SiteShell>
         <div className="mx-auto max-w-xl px-4 py-16 text-center">
           <h1 className="font-display text-5xl">Kun administrator</h1>
-          <p className="mt-3 text-muted">Kun administrator og udlejning kan bruge den her side.</p>
+          <p className="mt-3 text-muted">{error || "Kun en administrator kan bruge den her side."}</p>
           <Link to="/konto" className="mt-6 inline-flex min-h-11 items-center text-primary">
             Tilbage til kontoen
           </Link>
@@ -126,20 +129,22 @@ function AdminPage() {
           <p className="font-display text-lg tracking-widest text-accent">ADMIN</p>
           <h1 className="font-display text-5xl sm:text-6xl">Pubber og klubber</h1>
           <p className="mt-2 max-w-2xl text-muted">
-            {me?.role === "admin"
-              ? "Søg en bruger frem og vælg rollen. Udlejning kan oprette pubber og koder, men ikke ændre roller."
-              : "Du kan oprette pubber og koder. Kun administratoren kan ændre roller."}
+            {canAssignRoles(me.role)
+              ? "Søg en bruger frem og vælg rollen. Gæster kan se turneringen. Scoreboard-roller kører tavlen."
+              : "Du kan det, din rolle giver adgang til."}
           </p>
-          {me?.role === "admin" ? (
-            <ul className="mt-4 grid gap-2 text-sm text-muted sm:grid-cols-3">
-              <li className="rounded-xl border border-line bg-surface px-3 py-2"><span className="text-primary">Administrator</span> — brugere, roller og siden.</li>
-              <li className="rounded-xl border border-line bg-surface px-3 py-2"><span className="text-primary">Udlejning</span> — pubber, koder og udlån.</li>
-              <li className="rounded-xl border border-line bg-surface px-3 py-2"><span className="text-primary">Klub</span> — kun egen tavle.</li>
+          {canAssignRoles(me.role) ? (
+            <ul className="mt-4 grid gap-2 text-sm text-muted sm:grid-cols-2">
+              {USER_ROLES.filter((role) => role !== "udlejning").map((role) => (
+                <li key={role} className="rounded-xl border border-line bg-surface px-3 py-2">
+                  <span className="text-primary">{ROLE_LABEL[role]}</span>
+                </li>
+              ))}
             </ul>
           ) : null}
         </div>
 
-        <form onSubmit={onCreate} className="grid gap-4 rounded-card border border-line bg-surface p-5">
+        <form onSubmit={onCreate} className={`grid gap-4 rounded-card border border-line bg-surface p-5 ${canManageVenues(me.role) ? "" : "hidden"}`}>
           <h2 className="font-display text-3xl">Ny bruger</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Pub, klub eller sted">
@@ -194,6 +199,7 @@ function AdminPage() {
           </section>
         ) : null}
 
+        {canManageVenues(me.role) ? (
         <section className="grid gap-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 className="font-display text-3xl">Brugere</h2>
@@ -233,35 +239,35 @@ function AdminPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs tracking-wide text-muted">
-                    {venue.role === "admin" ? "ADMINISTRATOR" : venue.role === "udlejning" ? "UDLEJNING" : venue.active ? "KLUB" : "LUKKET"}
+                    {ROLE_LABEL[venue.role]}{venue.role !== "admin" && venue.role !== "administrator_manager" && !venue.active ? " · LUKKET" : ""}
                   </p>
                   <p className="font-display text-3xl text-primary">{venue.accessCode || "—"}</p>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {me?.role === "admin" && venue.userId !== me.userId ? (
+                {canAssignRoles(me.role) && venue.userId !== me.userId ? (
                   <label className="grid gap-1 text-xs text-muted">
                     <span>Rolle</span>
                     <select
                       className={inputClass}
                       value={venue.role}
                       onChange={(event) => {
-                        const role = event.target.value as "admin" | "udlejning" | "klub";
+                        const role = event.target.value as (typeof USER_ROLES)[number];
                         const label = venue.venueName || venue.email;
                         void setUserRole({ data: { userId: venue.userId, role } })
                           .then(async () => {
-                            setNote(`${label} er nu ${role === "admin" ? "administrator" : role === "udlejning" ? "udlejning" : "klub"}.`);
+                            setNote(`${label} er nu ${ROLE_LABEL[role]}.`);
                             await reload();
                           })
                           .catch((err: Error) => setError(err.message));
                       }}
                     >
-                      <option value="klub">Klub — kun egen tavle</option>
-                      <option value="udlejning">Udlejning — pubber og koder</option>
-                      <option value="admin">Administrator</option>
+                      {USER_ROLES.filter((role) => me.role === "administrator_manager" || role !== "administrator_manager").map((role) => (
+                        <option key={role} value={role}>{ROLE_LABEL[role]}</option>
+                      ))}
                     </select>
                   </label>
-                ) : venue.userId === me?.userId ? (
+                ) : venue.userId === me.userId ? (
                   <span className="inline-flex min-h-11 items-center px-3 text-sm text-muted">Det er dig</span>
                 ) : null}
                 {venue.accessCode ? (
@@ -272,7 +278,7 @@ function AdminPage() {
                 <button type="button" className="min-h-11 rounded-xl border border-line px-3 text-sm" onClick={() => setOpenId(openId === venue.userId ? null : venue.userId)}>
                   {openId === venue.userId ? "Luk" : "Ret"}
                 </button>
-                {venue.role !== "admin" ? (
+                {venue.role !== "admin" && venue.role !== "administrator_manager" && canManageVenues(me.role) ? (
                   <>
                     <button
                       type="button"
@@ -300,7 +306,7 @@ function AdminPage() {
                     >
                       {venue.active ? "Luk adgang" : "Åbn adgang"}
                     </button>
-                    {me?.role === "admin" ? (
+                    {canAssignRoles(me.role) ? (
                     <button
                       type="button"
                       className="min-h-11 rounded-xl px-3 text-sm text-danger"
@@ -330,8 +336,9 @@ function AdminPage() {
             <p className="text-sm text-muted">Ingen brugere matcher søgningen.</p>
           ) : null}
         </section>
+        ) : null}
 
-        {me?.role === "admin" ? (
+        {canEditSiteSettings(me.role) ? (
         <form
           className="grid gap-4 rounded-card border border-line bg-surface p-5"
           onSubmit={(event) => {

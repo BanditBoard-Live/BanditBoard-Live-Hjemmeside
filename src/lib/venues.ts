@@ -1,11 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { USER_ROLES, type UserRole } from "@/lib/roles";
 
 export type PublicProfile = {
   userId: string;
   email: string;
   accountName: string;
-  role: "admin" | "udlejning" | "klub";
+  role: UserRole;
   venueName: string;
   contactName: string;
   phone: string;
@@ -138,12 +139,23 @@ export const newAccessCode = createServerFn({ method: "POST" })
     return regenerateAccessCode(context.userId, data.userId, data.accessCode);
   });
 
+export const deleteMyAccount = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { password: string }) => {
+    const password = String(input?.password ?? "");
+    if (password.length < 8) throw new Error("Skriv din adgangskode.");
+    return { password };
+  })
+  .handler(async ({ context, data }) => {
+    const { deleteOwnAccount } = await import("./board-store.server");
+    return deleteOwnAccount(context.userId, data.password);
+  });
+
 export const setUserRole = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { userId: string; role: "admin" | "udlejning" | "klub" }) => {
+  .validator((input: { userId: string; role: UserRole }) => {
     const userId = clip(input?.userId, 80);
-    const role =
-      input?.role === "admin" || input?.role === "udlejning" || input?.role === "klub" ? input.role : "";
+    const role = (USER_ROLES as readonly string[]).includes(input?.role) ? input.role : "";
     if (!userId || !role) throw new Error("Brugeren eller rollen mangler.");
     return { userId, role };
   })

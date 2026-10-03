@@ -16,7 +16,9 @@ import { SiteShell } from "@/components/site-shell";
 import { Field, inputClass } from "@/components/auth-card";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { getMe, saveMyProfile, type PublicProfile } from "@/lib/venues";
+import { getMe, saveMyProfile, deleteMyAccount, type PublicProfile } from "@/lib/venues";
+import { ROLE_LABEL, canOpenAdmin, canUseScoreboard } from "@/lib/roles";
+import { signOut } from "@/lib/auth/client";
 
 export const Route = createFileRoute("/konto")({ component: AccountPage });
 
@@ -41,6 +43,8 @@ function AccountPage() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [pending, setPending] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -95,18 +99,34 @@ function AccountPage() {
         <p className="font-display text-lg tracking-widest text-primary">LOGGET IND</p>
         <h1 className="mt-1 font-display text-5xl sm:text-6xl">{profile?.venueName || user.displayName || "Din konto"}</h1>
         <p className="mt-2 text-muted">{profile?.email || user.primaryEmail}</p>
+        {profile ? <p className="mt-1 text-sm text-primary">{ROLE_LABEL[profile.role]}</p> : null}
         {profile?.active === false ? (
           <p className="mt-4 rounded-xl border border-danger/40 bg-surface px-4 py-3 text-sm text-danger">
             Adgangen er lukket. Kontakt administratoren.
           </p>
         ) : null}
-        {profile?.role === "admin" || profile?.role === "udlejning" ? (
+        {profile && canOpenAdmin(profile.role) ? (
           <Link to="/admin" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 font-semibold text-primary">
             <Shield className="size-4" aria-hidden="true" />
-            {profile.role === "admin" ? "Admin — brugere og roller" : "Udlejning — pubber og koder"}
+            {profile.role === "administrer_indstillinger" ? "Indstillinger" : "Admin — brugere og roller"}
           </Link>
         ) : null}
 
+        {profile && !canUseScoreboard(profile.role) ? (
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Turneringsplan", "Se programmet for aftenen.", "/turnering"],
+              ["Tilmeld dig", "Opret dig som spiller.", "/turnering"],
+              ["Rangliste", "Point og sejre.", "/turnering"],
+              ["Historik", "Tidligere kampe.", "/turnering"],
+            ].map(([title, text, href]) => (
+              <a key={title} href={href} className="rounded-card border border-line bg-surface p-4 transition hover:border-primary">
+                <h2 className="font-display text-2xl">{title}</h2>
+                <p className="mt-1 text-sm text-muted">{text}</p>
+              </a>
+            ))}
+          </div>
+        ) : (
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {tools.map(({ href, icon: Icon, title, text }) => (
             <a key={href + title} href={href} className="rounded-card border border-line bg-surface p-4 transition hover:border-primary">
@@ -116,6 +136,7 @@ function AccountPage() {
             </a>
           ))}
         </div>
+        )}
 
         <form onSubmit={onSubmit} className="mt-10 grid max-w-2xl gap-4 rounded-card border border-line bg-surface p-5">
           <h2 className="font-display text-3xl">Sted og kontakt</h2>
@@ -148,6 +169,31 @@ function AccountPage() {
           {saved ? <p className="text-sm text-ok">{saved}</p> : null}
           <button type="submit" disabled={pending || !profile} className="min-h-12 rounded-xl bg-primary font-display text-2xl text-primary-fg disabled:opacity-60">
             {pending ? "Gemmer…" : "Gem oplysninger"}
+          </button>
+        </form>
+
+        <form
+          className="mt-6 grid max-w-2xl gap-3 rounded-card border border-danger/40 bg-surface p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!window.confirm("Slet kontoen helt? Tavle, tilmelding og login forsvinder.")) return;
+            setDeleting(true);
+            setError("");
+            void deleteMyAccount({ data: { password: deletePassword } })
+              .then(() => signOut("/"))
+              .catch((err: Error) => {
+                setDeleting(false);
+                setError(err.message || "Kontoen kunne ikke slettes.");
+              });
+          }}
+        >
+          <h2 className="font-display text-3xl">Slet konto</h2>
+          <p className="text-sm text-muted">Kontoen fjernes fra brugere, tavle og turnering. Det kan ikke fortrydes.</p>
+          <Field label="Adgangskode">
+            <input className={inputClass} type="password" autoComplete="current-password" required value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
+          </Field>
+          <button type="submit" disabled={deleting} className="min-h-12 rounded-xl bg-danger font-display text-2xl text-white disabled:opacity-60">
+            {deleting ? "Sletter…" : "Slet min konto"}
           </button>
         </form>
       </div>

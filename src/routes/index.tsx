@@ -97,8 +97,8 @@ function Home() {
             <p className="font-display text-lg tracking-widest text-accent">UDLÅN</p>
             <h2 className="mt-2 font-display text-4xl sm:text-5xl">Lån tavlen ud med en kode</h2>
             <ol className="mt-6 space-y-4 text-sm text-muted">
-              <li><span className="mr-2 font-display text-2xl text-primary">01</span>Den første konto bliver administrator. Opret den selv, før andre gør det.</li>
-              <li><span className="mr-2 font-display text-2xl text-primary">02</span>I admin søger du en bruger frem og vælger rollen: administrator, udlejning eller klub.</li>
+              <li><span className="mr-2 font-display text-2xl text-primary">01</span>Nye konti starter som gæst og kan se turnering, rangliste og historik.</li>
+              <li><span className="mr-2 font-display text-2xl text-primary">02</span>I admin søger du dem frem og giver dem en rolle, for eksempel bruger eller scoreboard-admin.</li>
               <li><span className="mr-2 font-display text-2xl text-primary">03</span>De får en adgangskode, logger ind og bruger kun deres egen tavle.</li>
             </ol>
           </div>

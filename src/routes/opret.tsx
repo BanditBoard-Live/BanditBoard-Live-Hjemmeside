@@ -105,7 +105,7 @@ function SignupPage() {
     <SiteShell>
       <AuthCard
         title="Opret bruger"
-        lede="Udfyld stedet og en adgangskode. Den første konto bliver administrator. Alle andre starter som almindelige brugere."
+        lede="Du starter som gæst. Så kan du tilmelde dig en turnering og se plan, rangliste og historik."
         footer={
           <>
             Har du allerede en konto? <SwitchLink to="/login">Log ind</SwitchLink>
