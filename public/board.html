@@ -2808,6 +2808,31 @@ function boardBlockReason(){
 async function startApp(){
   const root=$('#root');
   if(root) root.innerHTML='<div style="display:grid;place-items:center;min-height:70vh;color:#94A3B8">Åbner scoreboard…</div>';
+  const obsKey=new URLSearchParams(location.search).get('obs')||'';
+  if(obsKey){
+    window.__bbObs=true;
+    window.__bbPerms=['USE_SCOREBOARD','VIEW_OWN_BOARD','USE_REMOTE'];
+    scheduleCloud.armed=false;
+    document.body.style.pointerEvents='none';
+    let obsRev='';
+    const pullObs=async()=>{
+      const r=await fetch('/api/board/state?obs='+encodeURIComponent(obsKey),{cache:'no-store'});
+      if(!r.ok) throw new Error('bad');
+      const j=await r.json();
+      if(j.updatedAt&&j.updatedAt===obsRev) return;
+      obsRev=j.updatedAt||obsRev;
+      if(j.state) S=bindTables(typeof j.state==='string'?JSON.parse(j.state):j.state);
+      paintShell();
+      render();
+    };
+    try{
+      await pullObs();
+      setInterval(()=>pullObs().catch(()=>{}),2000);
+    }catch(e){
+      document.body.innerHTML=boardDenied('OBS-linket er ugyldigt. Hent et nyt under Konto.');
+    }
+    return;
+  }
   let me=null;
   try{const r=await fetch('/api/board/session',{headers:bbHeaders(),credentials:'include',cache:'no-store'}); if(r.ok) me=await r.json()}catch(e){}
   if(!me||!me.id){location.replace('/login?next='+encodeURIComponent(location.pathname+location.hash));return}

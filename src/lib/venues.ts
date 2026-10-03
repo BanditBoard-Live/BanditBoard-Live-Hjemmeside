@@ -75,6 +75,13 @@ export const getSiteSettings = createServerFn({ method: "GET" }).handler(async (
   return readSettings();
 });
 
+export const getOverlayKey = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { ensureOverlayKey } = await import("./board-store.server");
+    return ensureOverlayKey(context.userId);
+  });
+
 export const getMe = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {

@@ -16,7 +16,7 @@ import { SiteShell } from "@/components/site-shell";
 import { Field, inputClass } from "@/components/auth-card";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { getMe, saveMyProfile, deleteMyAccount, type PublicProfile } from "@/lib/venues";
+import { getMe, getOverlayKey, saveMyProfile, deleteMyAccount, type PublicProfile } from "@/lib/venues";
 import { ROLE_LABEL, canOpenAdmin, canOpenBoard, canRunLiveBoard, hasPermission } from "@/lib/roles";
 import { signOut } from "@/lib/auth/client";
 
@@ -45,11 +45,16 @@ function AccountPage() {
   const [pending, setPending] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [obsKey, setObsKey] = useState("");
+  const [copied, setCopied] = useState("");
 
   useEffect(() => {
     if (!user) return;
     getMe()
-      .then(setProfile)
+      .then(async (next) => {
+        setProfile(next);
+        if (canRunLiveBoard(next.role)) setObsKey(await getOverlayKey());
+      })
       .catch((err: Error) => setError(err.message || "Kontoen kunne ikke hentes."));
   }, [user]);
 
@@ -100,6 +105,35 @@ function AccountPage() {
         <h1 className="mt-1 font-display text-5xl sm:text-6xl">{profile?.venueName || user.displayName || "Din konto"}</h1>
         <p className="mt-2 text-muted">{profile?.email || user.primaryEmail}</p>
         {profile ? <p className="mt-1 text-sm text-primary">{ROLE_LABEL[profile.role]}</p> : null}
+        {obsKey ? (
+          <div className="mt-6 rounded-card border border-line bg-surface p-4">
+            <h2 className="font-display text-3xl">OBS-overlay</h2>
+            <p className="mt-1 text-sm text-muted">
+              Sæt den her adresse i OBS under Browser. Bredde 1920, højde 1080. OBS er ikke logget ind, derfor virker det almindelige overlay-link ikke der.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                readOnly
+                className={inputClass}
+                value={`${typeof window === "undefined" ? "" : window.location.origin}/board.html?obs=${obsKey}#overlay`}
+              />
+              <button
+                type="button"
+                className="min-h-12 shrink-0 rounded-xl bg-primary px-4 font-display text-2xl text-primary-fg"
+                onClick={() => {
+                  const url = `${window.location.origin}/board.html?obs=${obsKey}#overlay`;
+                  void navigator.clipboard.writeText(url).then(() => {
+                    setCopied("Linket er kopieret.");
+                    setTimeout(() => setCopied(""), 2000);
+                  });
+                }}
+              >
+                Kopiér
+              </button>
+            </div>
+            {copied ? <p className="mt-2 text-sm text-primary">{copied}</p> : null}
+          </div>
+        ) : null}
         {profile?.active === false ? (
           <p className="mt-4 rounded-xl border border-danger/40 bg-surface px-4 py-3 text-sm text-danger">
             Adgangen er lukket. Kontakt administratoren.

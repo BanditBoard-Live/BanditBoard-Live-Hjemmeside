@@ -6,6 +6,7 @@ import {
   canEditSiteSettings,
   canManageVenues,
   canOpenBoard,
+  canRunLiveBoard,
   hasPermission,
   normalizeRole,
   type UserRole,
@@ -490,4 +491,40 @@ export async function writeBoardState(userId: string, state: string): Promise<{ 
     });
   }
   return { updatedAt: rows[0]?.updated_at ?? new Date().toISOString() };
+}
+
+export async function ensureOverlayKey(userId: string): Promise<string> {
+  const profile = await ensureProfile(userId);
+  if (!profile.active) throw new Error("Adgangen er lukket.");
+  if (!canRunLiveBoard(profile.role)) throw new Error("Kun scoreboard-admin kan lave et OBS-link.");
+  const sql = await getSql();
+  const rows = await sql.query<{ overlay_key: string | null }>(
+    `select overlay_key from profiles where user_id = $1`,
+    [userId],
+  );
+  const existing = rows[0]?.overlay_key?.trim();
+  if (existing) return existing;
+  const key = randomBytes(18).toString("base64url");
+  await sql`update profiles set overlay_key = ${key} where user_id = ${userId}`;
+  return key;
+}
+
+export async function readBoardByOverlayKey(key: string): Promise<{ state: string | null; updatedAt: string | null }> {
+  if (!/^[A-Za-z0-9_-]{20,80}$/.test(key)) throw new Error("OBS-linket er ugyldigt.");
+  const sql = await getSql();
+  const rows = await sql.query<{
+    active: boolean;
+    role: string;
+    state: string | null;
+    updated_at: string | null;
+  }>(
+    `select p.active, p.role, b.state, b.updated_at::text as updated_at
+     from profiles p
+     left join board_state b on b.user_id = p.user_id
+     where p.overlay_key = $1`,
+    [key],
+  );
+  const row = rows[0];
+  if (!row || !row.active || !canRunLiveBoard(normalizeRole(row.role))) throw new Error("OBS-linket er ugyldigt.");
+  return { state: row.state, updatedAt: row.updated_at };
 }

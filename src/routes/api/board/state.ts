@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSessionUser } from "@/lib/auth/verify.server";
-import { readBoardState, writeBoardState } from "@/lib/board-store.server";
+import { readBoardByOverlayKey, readBoardState, writeBoardState } from "@/lib/board-store.server";
 
 function bearer(request: Request): string | undefined {
   const header = request.headers.get("authorization") || "";
@@ -24,6 +24,18 @@ export const Route = createFileRoute("/api/board/state")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const obs = new URL(request.url).searchParams.get("obs");
+        if (obs) {
+          try {
+            const data = await readBoardByOverlayKey(obs);
+            return new Response(JSON.stringify(data), {
+              status: 200,
+              headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+            });
+          } catch {
+            return json({ error: "OBS-linket er ugyldigt." }, 404);
+          }
+        }
         const user = await getSessionUser(bearer(request));
         if (!user) return json({ error: "Unauthorized" }, 401);
         try {
