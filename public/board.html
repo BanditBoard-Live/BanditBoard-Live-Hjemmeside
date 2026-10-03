@@ -2810,6 +2810,8 @@ async function startApp(){
   if(root) root.innerHTML='<div style="display:grid;place-items:center;min-height:70vh;color:#94A3B8">Åbner scoreboard…</div>';
   const obsKey=new URLSearchParams(location.search).get('obs')||'';
   if(obsKey){
+    if(!MODE || MODE==='overlay') MODE='overlay';
+    if(TBL_ARG==null) TBL_ARG='1';
     window.__bbObs=true;
     window.__bbPerms=['USE_SCOREBOARD','VIEW_OWN_BOARD','USE_REMOTE'];
     scheduleCloud.armed=false;
